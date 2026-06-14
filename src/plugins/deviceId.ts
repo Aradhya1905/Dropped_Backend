@@ -32,12 +32,24 @@ interface DeviceIdOptions {
 
 export const deviceIdPlugin = fp<DeviceIdOptions>(
   async (app: FastifyInstance, opts) => {
-    const publicPaths = new Set(opts.publicPaths ?? ['/health']);
+    const publicPaths = opts.publicPaths ?? ['/health'];
+    const exact = new Set(publicPaths);
+
+    const isPublic = (path: string): boolean => {
+      if (exact.has(path)) return true;
+      // Prefix match so a docs mount (e.g. /docs) also exempts its assets
+      // (/docs/, /docs/foo.js). /health stays an exact match.
+      return publicPaths.some(
+        (p) => p !== '/health' && (path === p || path.startsWith(p + '/')),
+      );
+    };
 
     app.decorateRequest('deviceId', '');
 
     app.addHook('onRequest', async (request: FastifyRequest) => {
-      if (publicPaths.has(request.routeOptions.url ?? request.url)) {
+      // request.url carries the query string; strip it before matching.
+      const path = (request.routeOptions.url ?? request.url).split('?')[0] ?? '';
+      if (isPublic(path)) {
         return;
       }
 

@@ -12,6 +12,11 @@ import { dropsRoutes } from './drops.routes.js';
 export async function registerRoutes(app: FastifyInstance): Promise<void> {
   const r = app.withTypeProvider<ZodTypeProvider>();
 
+  // Public: the generated OpenAPI document that the Scalar UI (/docs) reads.
+  app.get('/openapi.json', { schema: { hide: true } }, async () =>
+    app.swagger(),
+  );
+
   // Public: liveness + DB ping. Exempt from the device-id requirement.
   r.get(
     '/health',
