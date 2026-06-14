@@ -187,7 +187,5 @@ What was done to stand this up, in order:
    (valid, auto-renewing).
 6. **Deployed the docs build.** Pushed the Scalar changes, pulled + rebuilt + restarted on
    the server. Verified `/health`, `/docs`, and `/openapi.json` over public HTTPS.
-
-> A leftover `cf-tunnel` PM2 process (an earlier free Cloudflare quick-tunnel, now
-> superseded by the DuckDNS + Caddy setup) may still be running. It is harmless but
-> unnecessary — `pm2 delete cf-tunnel && pm2 save` to remove it.
+7. **Cleanup.** Removed the earlier `cf-tunnel` PM2 process (a temporary Cloudflare
+   quick-tunnel used before the DuckDNS + Caddy setup). PM2 now manages only `dropped-api`.
