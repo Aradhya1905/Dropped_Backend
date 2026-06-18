@@ -5,7 +5,12 @@ import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 
 import { deviceController } from '../controllers/device.controller.js';
-import { deviceResponse, deviceStatsResponse } from '../schemas/drop.schema.js';
+import {
+  addStepsBody,
+  deviceResponse,
+  deviceStatsResponse,
+  stepsResponse,
+} from '../schemas/drop.schema.js';
 
 export async function devicesRoutes(app: FastifyInstance): Promise<void> {
   const r = app.withTypeProvider<ZodTypeProvider>();
@@ -20,5 +25,17 @@ export async function devicesRoutes(app: FastifyInstance): Promise<void> {
     '/devices/me/stats',
     { schema: { response: { 200: deviceStatsResponse } } },
     deviceController.stats,
+  );
+
+  r.get(
+    '/devices/me/steps',
+    { schema: { response: { 200: stepsResponse } } },
+    deviceController.steps,
+  );
+
+  r.post(
+    '/devices/me/steps',
+    { schema: { body: addStepsBody, response: { 200: stepsResponse } } },
+    deviceController.addSteps,
   );
 }

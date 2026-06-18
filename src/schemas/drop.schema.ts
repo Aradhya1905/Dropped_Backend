@@ -66,6 +66,22 @@ export const deviceStatsResponse = z.object({
   streakDays: z.number(),
 });
 
+/** Client → server: day-tagged step deltas to accumulate (one sync). */
+export const addStepsBody = z.object({
+  entries: z
+    .array(
+      z.object({
+        day: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+        delta: z.number().int().positive().max(200000),
+      }),
+    )
+    .min(1)
+    .max(60),
+});
+
+/** Server → client: the single steps number the Trail receipt shows. */
+export const stepsResponse = z.object({ steps: z.number() });
+
 export const healthResponse = z.object({ ok: z.boolean() });
 
 export { apiSecretSchema, errorSchema };

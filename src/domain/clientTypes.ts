@@ -78,8 +78,7 @@ export interface ApiSecret extends Omit<Secret, 'body'> {
 /**
  * Per-device aggregate stats for the Trail "receipt" header. All server-owned;
  * `streakDays` counts consecutive days with a reveal OR a drop ending
- * today/yesterday. (Steps are read on-device from the platform Health APIs and
- * are not part of this contract.)
+ * today/yesterday. (Steps are a separate endpoint — see `DeviceSteps`.)
  */
 export interface DeviceStats {
   droppedTotal: number;
@@ -88,4 +87,13 @@ export interface DeviceStats {
   foundThisMonth: number;
   citiesVisited: number;
   streakDays: number;
+}
+
+/**
+ * The single steps number for the Trail receipt (`GET /devices/me/steps`).
+ * Counted on-device and synced as day-tagged deltas; the server aggregates by a
+ * configurable scope (day / month / lifetime), so the client just renders it.
+ */
+export interface DeviceSteps {
+  steps: number;
 }

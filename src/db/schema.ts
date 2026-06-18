@@ -9,6 +9,7 @@
 import { sql } from 'drizzle-orm';
 import {
   customType,
+  date,
   index,
   integer,
   pgTable,
@@ -116,6 +117,26 @@ export const hearts = pgTable(
   table => [primaryKey({ columns: [table.dropId, table.deviceId] })],
 );
 
+/**
+ * Per-device, per-day step counts. Backs the Trail "steps" stat; the displayed
+ * scope is decided in step.service (STEP_SCOPE), not here. Manipulated via raw
+ * SQL upsert in step.repo.
+ */
+export const deviceSteps = pgTable(
+  'device_steps',
+  {
+    deviceId: text('device_id')
+      .notNull()
+      .references(() => devices.id),
+    day: date('day').notNull(),
+    steps: integer('steps').notNull().default(0),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  table => [primaryKey({ columns: [table.deviceId, table.day] })],
+);
+
 /** Reports feed moderation. N reports flip a drop to `pending`. */
 export const reports = pgTable(
   'reports',
@@ -142,6 +163,7 @@ export const tableExports = {
   saves,
   hearts,
   reports,
+  deviceSteps,
 };
 
 /** Default SQL expression bag for raw queries that need `now()` etc. */
