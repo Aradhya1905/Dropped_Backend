@@ -5,7 +5,7 @@ import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 
 import { deviceController } from '../controllers/device.controller.js';
-import { deviceResponse } from '../schemas/drop.schema.js';
+import { deviceResponse, deviceStatsResponse } from '../schemas/drop.schema.js';
 
 export async function devicesRoutes(app: FastifyInstance): Promise<void> {
   const r = app.withTypeProvider<ZodTypeProvider>();
@@ -14,5 +14,11 @@ export async function devicesRoutes(app: FastifyInstance): Promise<void> {
     '/devices/me',
     { schema: { response: { 200: deviceResponse } } },
     deviceController.me,
+  );
+
+  r.get(
+    '/devices/me/stats',
+    { schema: { response: { 200: deviceStatsResponse } } },
+    deviceController.stats,
   );
 }

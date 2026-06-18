@@ -6,8 +6,19 @@
  */
 import { eq, sql } from 'drizzle-orm';
 
-import { db } from '../db/client.js';
+import { db, sqlClient } from '../db/client.js';
 import { devices, drops } from '../db/schema.js';
+
+/** Raw aggregate counts + activity dates backing the Trail stats. */
+export interface DeviceStatsRow {
+  droppedTotal: number;
+  droppedThisMonth: number;
+  foundTotal: number;
+  foundThisMonth: number;
+  citiesVisited: number;
+  /** Distinct UTC activity days (reveal OR drop), 'YYYY-MM-DD', newest first. */
+  activityDates: string[];
+}
 
 export const deviceRepo = {
   /** Upsert a device by id; idempotent. Called on first request. */
@@ -37,5 +48,47 @@ export const deviceRepo = {
         sql`${drops.deviceId} = ${deviceId} AND ${drops.createdAt} > now() - (${hours} * interval '1 hour')`,
       );
     return rows[0]?.count ?? 0;
+  },
+
+  /**
+   * Aggregate Trail stats for a device: dropped/found totals (all-time and this
+   * calendar month), distinct cities dropped-in or revealed, and the list of
+   * distinct active days used to compute the streak. One round trip for the
+   * scalar counts, one for the date list.
+   */
+  async stats(deviceId: string): Promise<DeviceStatsRow> {
+    const [counts] = await sqlClient<
+      [Omit<DeviceStatsRow, 'activityDates'>]
+    >`
+      SELECT
+        (SELECT count(*)::int FROM drops
+           WHERE device_id = ${deviceId}) AS "droppedTotal",
+        (SELECT count(*)::int FROM drops
+           WHERE device_id = ${deviceId}
+             AND created_at >= date_trunc('month', now())) AS "droppedThisMonth",
+        (SELECT count(*)::int FROM reveals
+           WHERE device_id = ${deviceId}) AS "foundTotal",
+        (SELECT count(*)::int FROM reveals
+           WHERE device_id = ${deviceId}
+             AND created_at >= date_trunc('month', now())) AS "foundThisMonth",
+        (SELECT count(DISTINCT lower(city))::int FROM drops
+           WHERE city IS NOT NULL
+             AND (device_id = ${deviceId}
+                  OR id IN (SELECT drop_id FROM reveals
+                              WHERE device_id = ${deviceId}))) AS "citiesVisited"
+    `;
+
+    const dateRows = await sqlClient<{ d: string }[]>`
+      SELECT to_char((created_at AT TIME ZONE 'UTC')::date, 'YYYY-MM-DD') AS d
+      FROM (
+        SELECT created_at FROM reveals WHERE device_id = ${deviceId}
+        UNION ALL
+        SELECT created_at FROM drops   WHERE device_id = ${deviceId}
+      ) t
+      GROUP BY 1
+      ORDER BY 1 DESC
+    `;
+
+    return { ...counts, activityDates: dateRows.map(r => r.d) };
   },
 };

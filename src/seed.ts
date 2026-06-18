@@ -58,6 +58,7 @@ async function main(): Promise<void> {
       body: s.body,
       mood: s.mood,
       placeLabel: s.placeLabel,
+      city: 'Bengaluru',
       coordinate: { lat: CENTRE.lat + s.dLat, lng: CENTRE.lng + s.dLng },
       status: 'visible',
     });

@@ -74,3 +74,18 @@ export interface ApiSecret extends Omit<Secret, 'body'> {
   /** Present on nearby results: server-computed metres from the query point. */
   distanceMeters?: number;
 }
+
+/**
+ * Per-device aggregate stats for the Trail "receipt" header. All server-owned;
+ * `streakDays` counts consecutive days with a reveal OR a drop ending
+ * today/yesterday. (Steps are read on-device from the platform Health APIs and
+ * are not part of this contract.)
+ */
+export interface DeviceStats {
+  droppedTotal: number;
+  droppedThisMonth: number;
+  foundTotal: number;
+  foundThisMonth: number;
+  citiesVisited: number;
+  streakDays: number;
+}

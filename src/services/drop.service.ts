@@ -18,6 +18,7 @@ export interface CreateDropInput {
   mood: Mood;
   coordinate: Coordinate;
   placeLabel?: string;
+  city?: string;
 }
 
 export const dropService = {
@@ -45,6 +46,7 @@ export const dropService = {
       body: input.body,
       mood: input.mood,
       placeLabel: input.placeLabel ?? null,
+      city: input.city ?? null,
       coordinate: input.coordinate,
       status,
     });

@@ -19,6 +19,7 @@ export const createDropBody = z.object({
   mood: moodSchema,
   coordinate: coordinateSchema,
   placeLabel: z.string().trim().max(120).optional(),
+  city: z.string().trim().max(120).optional(),
 });
 
 export const nearbyQuery = z.object({
@@ -54,6 +55,15 @@ export const deviceResponse = z.object({
   deviceId: z.string(),
   createdAt: z.number(),
   dropsQuotaRemaining: z.number(),
+});
+
+export const deviceStatsResponse = z.object({
+  droppedTotal: z.number(),
+  droppedThisMonth: z.number(),
+  foundTotal: z.number(),
+  foundThisMonth: z.number(),
+  citiesVisited: z.number(),
+  streakDays: z.number(),
 });
 
 export const healthResponse = z.object({ ok: z.boolean() });

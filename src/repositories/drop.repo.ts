@@ -18,6 +18,7 @@ export interface DropRow {
   body: string;
   mood: string;
   placeLabel: string | null;
+  city: string | null;
   lat: number;
   lng: number;
   status: DropStatus;
@@ -42,6 +43,7 @@ interface CreateDropInput {
   body: string;
   mood: string;
   placeLabel: string | null;
+  city: string | null;
   coordinate: Coordinate;
   status: DropStatus;
 }
@@ -56,6 +58,7 @@ const dropCols = sqlClient`
   d.body,
   d.mood,
   d.place_label      AS "placeLabel",
+  d.city,
   ST_Y(d.geog::geometry) AS lat,
   ST_X(d.geog::geometry) AS lng,
   d.status,
@@ -84,17 +87,19 @@ export const dropRepo = {
     const lat = snap(input.coordinate.lat);
     const lng = snap(input.coordinate.lng);
     const rows = await sqlClient<DropRow[]>`
-      INSERT INTO drops (device_id, body, mood, place_label, geog, status)
+      INSERT INTO drops (device_id, body, mood, place_label, city, geog, status)
       VALUES (
         ${input.deviceId},
         ${input.body},
         ${input.mood},
         ${input.placeLabel},
+        ${input.city},
         ST_SetSRID(ST_MakePoint(${lng}, ${lat}), 4326)::geography,
         ${input.status}
       )
       RETURNING
         id, device_id AS "deviceId", body, mood, place_label AS "placeLabel",
+        city,
         ST_Y(geog::geometry) AS lat, ST_X(geog::geometry) AS lng,
         status, reveal_count AS "revealCount", stood_here AS "stoodHere",
         heart_count AS "heartCount", created_at AS "createdAt"

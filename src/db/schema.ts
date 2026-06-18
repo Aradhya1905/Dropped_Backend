@@ -46,6 +46,7 @@ export const drops = pgTable(
     body: text('body').notNull(),
     mood: text('mood').notNull(),
     placeLabel: text('place_label'),
+    city: text('city'),
     geog: geography('geog').notNull(),
     status: text('status').notNull().default('visible'),
     revealCount: integer('reveal_count').notNull().default(0),
