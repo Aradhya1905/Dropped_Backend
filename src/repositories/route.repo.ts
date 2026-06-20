@@ -69,7 +69,7 @@ export const routeRepo = {
         provider, geometry, distance_meters, duration_seconds
       ) VALUES (
         ${key.fromLat}, ${key.fromLng}, ${key.toLat}, ${key.toLng}, ${key.profile},
-        ${route.provider}, ${sqlClient.json(route.geometry as unknown as Parameters<typeof sqlClient.json>[0])},
+        ${route.provider}, ${JSON.stringify(route.geometry)}::jsonb,
         ${route.distanceMeters}, ${route.durationSeconds}
       )
     `;
