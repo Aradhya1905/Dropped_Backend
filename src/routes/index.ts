@@ -8,6 +8,7 @@ import { sqlClient } from '../db/client.js';
 import { healthResponse } from '../schemas/drop.schema.js';
 import { devicesRoutes } from './devices.routes.js';
 import { dropsRoutes } from './drops.routes.js';
+import { routeRoutes } from './route.routes.js';
 
 export async function registerRoutes(app: FastifyInstance): Promise<void> {
   const r = app.withTypeProvider<ZodTypeProvider>();
@@ -29,4 +30,5 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
 
   await app.register(devicesRoutes);
   await app.register(dropsRoutes);
+  await app.register(routeRoutes);
 }

@@ -56,6 +56,19 @@ const EnvSchema = z.object({
   /** Reports needed to auto-flip a drop to `pending` (shadow-removed). */
   REPORT_HIDE_THRESHOLD: z.coerce.number().int().positive().default(3),
 
+  // --- Walking-route proxy (GET /route/foot) -------------------------------
+  // Keys are optional: with neither set the endpoint simply returns
+  // { available: false } and the client draws no path. Tried ORS → Mapbox.
+  /** OpenRouteService API key (foot-walking). Empty = provider disabled. */
+  ORS_API_KEY: z.string().default(''),
+  /** Mapbox access token (walking directions). Empty = provider disabled. */
+  MAPBOX_TOKEN: z.string().default(''),
+  /** Monthly upstream-call ceiling per provider (a safety cap under the free tier). */
+  ORS_MONTHLY_LIMIT: z.coerce.number().int().nonnegative().default(60_000),
+  MAPBOX_MONTHLY_LIMIT: z.coerce.number().int().nonnegative().default(90_000),
+  /** How long a cached route stays fresh (walking networks are ~static). */
+  ROUTE_CACHE_TTL_DAYS: z.coerce.number().int().positive().default(21),
+
   NODE_ENV: z
     .enum(['development', 'test', 'production'])
     .default('development'),

@@ -12,6 +12,7 @@ import {
   date,
   index,
   integer,
+  jsonb,
   pgTable,
   primaryKey,
   text,
@@ -156,6 +157,54 @@ export const reports = pgTable(
   table => [index('reports_drop_idx').on(table.dropId)],
 );
 
+/**
+ * Cache of walking routes from the /route/foot proxy. Keyed by quantized
+ * endpoints (lat/lng ×1e4 ≈ 11 m) + profile so GPS jitter and many users
+ * walking to the same drop reuse one upstream call. `geometry` is a GeoJSON
+ * LineString. Rows expire via ROUTE_CACHE_TTL_DAYS (checked in the query).
+ */
+export const routeCache = pgTable(
+  'route_cache',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    fromLat: integer('from_lat').notNull(),
+    fromLng: integer('from_lng').notNull(),
+    toLat: integer('to_lat').notNull(),
+    toLng: integer('to_lng').notNull(),
+    profile: text('profile').notNull(),
+    provider: text('provider').notNull(),
+    geometry: jsonb('geometry').notNull(),
+    distanceMeters: integer('distance_meters').notNull(),
+    durationSeconds: integer('duration_seconds').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  table => [
+    index('route_cache_key_idx').on(
+      table.fromLat,
+      table.fromLng,
+      table.toLat,
+      table.toLng,
+      table.profile,
+    ),
+  ],
+);
+
+/** Per-provider monthly upstream-call counter, to honour the free-tier caps. */
+export const routingUsage = pgTable(
+  'routing_usage',
+  {
+    provider: text('provider').notNull(),
+    yyyymm: text('yyyymm').notNull(),
+    count: integer('count').notNull().default(0),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  table => [primaryKey({ columns: [table.provider, table.yyyymm] })],
+);
+
 export const tableExports = {
   devices,
   drops,
@@ -164,6 +213,8 @@ export const tableExports = {
   hearts,
   reports,
   deviceSteps,
+  routeCache,
+  routingUsage,
 };
 
 /** Default SQL expression bag for raw queries that need `now()` etc. */
