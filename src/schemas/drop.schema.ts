@@ -20,6 +20,13 @@ export const createDropBody = z.object({
   coordinate: coordinateSchema,
   placeLabel: z.string().trim().max(120).optional(),
   city: z.string().trim().max(120).optional(),
+  /**
+   * How long the drop lives. Absent = forever (the default).
+   *
+   * A *duration*, never a timestamp: the server computes `expires_at` from its
+   * own clock, because a client-supplied expiry is a client-supplied clock.
+   */
+  expiresInDays: z.union([z.literal(7), z.literal(30)]).optional(),
 });
 
 export const nearbyQuery = z.object({

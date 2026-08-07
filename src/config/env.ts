@@ -49,6 +49,12 @@ const EnvSchema = z.object({
   /** Max drops a single device may create per rolling 24h. */
   DROP_DAILY_LIMIT: z.coerce.number().int().positive().default(5),
 
+  /**
+   * Max replies a single device may leave per rolling 24h. Higher than the drop
+   * limit on purpose — replying is the cheap, frequent act; dropping is not.
+   */
+  REPLY_DAILY_LIMIT: z.coerce.number().int().positive().default(20),
+
   /** Default and hard-cap radius for the nearby query, in meters. */
   NEARBY_DEFAULT_RADIUS_M: z.coerce.number().int().positive().default(500),
   NEARBY_MAX_RADIUS_M: z.coerce.number().int().positive().default(2000),

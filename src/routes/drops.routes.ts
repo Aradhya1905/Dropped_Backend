@@ -8,6 +8,7 @@ import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { dropController } from '../controllers/drop.controller.js';
 import { revealController } from '../controllers/reveal.controller.js';
 import { engagementController } from '../controllers/engagement.controller.js';
+import { replyController } from '../controllers/reply.controller.js';
 import { trailController } from '../controllers/trail.controller.js';
 import {
   apiSecretSchema,
@@ -24,6 +25,14 @@ import {
   trailQuery,
   trailResponse,
 } from '../schemas/drop.schema.js';
+import {
+  createReplyBody,
+  deleteReplyResponse,
+  repliesQuery,
+  repliesResponse,
+  replyIdParams,
+  replyResponse,
+} from '../schemas/reply.schema.js';
 
 export async function dropsRoutes(app: FastifyInstance): Promise<void> {
   const r = app.withTypeProvider<ZodTypeProvider>();
@@ -107,5 +116,65 @@ export async function dropsRoutes(app: FastifyInstance): Promise<void> {
       },
     },
     engagementController.report,
+  );
+
+  // Replies in place. Both read and write are gated on a `reveals` row for
+  // (drop, device) — a device that has not physically stood here gets 403 on
+  // the list, not an empty array. The gate is in reply.service.
+  r.get(
+    '/drops/:id/replies',
+    {
+      schema: {
+        params: dropIdParams,
+        querystring: repliesQuery,
+        response: { 200: repliesResponse, 403: errorSchema, 404: errorSchema },
+      },
+    },
+    replyController.list,
+  );
+
+  r.post(
+    '/drops/:id/replies',
+    {
+      schema: {
+        params: dropIdParams,
+        body: createReplyBody,
+        response: {
+          201: replyResponse,
+          403: errorSchema,
+          404: errorSchema,
+          422: errorSchema,
+          429: errorSchema,
+        },
+      },
+    },
+    replyController.create,
+  );
+
+  r.delete(
+    '/drops/:id/replies/:replyId',
+    {
+      schema: {
+        params: replyIdParams,
+        response: {
+          200: deleteReplyResponse,
+          403: errorSchema,
+          404: errorSchema,
+        },
+      },
+    },
+    replyController.remove,
+  );
+
+  r.post(
+    '/drops/:id/replies/:replyId/report',
+    {
+      schema: {
+        params: replyIdParams,
+        body: reportBody,
+        response: { 200: reportResponse, 403: errorSchema, 404: errorSchema },
+      },
+    },
+    replyController.report,
   );
 }

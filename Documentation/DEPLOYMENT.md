@@ -11,6 +11,11 @@ How the Dropped backend is deployed, where it lives, and how to operate it.
 - **OpenAPI spec:** https://droppeddev.duckdns.org/openapi.json
 - **Redeploy:** say `/deployInServer`, or run `./scripts/deploy.ps1 -Push` locally.
 
+> **Going to production?** See
+> [2026-07-30-production-hardening.md](./2026-07-30-production-hardening.md) — planned
+> changes to this setup (self-hosted Postgres on the second micro, backups, indexes,
+> memory hardening). Nothing there is implemented yet.
+
 ---
 
 ## The server

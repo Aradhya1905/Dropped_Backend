@@ -14,7 +14,7 @@ import { toUnsealedSecret } from './mappers.js';
 export const revealService = {
   /**
    * Verify the device is within 50 m of the drop, then unseal it.
-   * - No drop / not visible → 404.
+   * - No drop / not visible / expired → 404.
    * - Outside 50 m → 403 with the server-measured distance.
    * - Inside → record the reveal (idempotent), bump counters once, return body.
    */

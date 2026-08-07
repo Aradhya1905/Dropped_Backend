@@ -25,6 +25,10 @@ export interface DropRow {
   revealCount: number;
   stoodHere: number;
   heartCount: number;
+  /** Visible replies pinned under this drop ("3 voices here"). */
+  replyCount: number;
+  /** When it stops being findable. `null` = forever. */
+  expiresAt: Date | string | null;
   /** postgres.js returns timestamps as strings; mappers coerce to ms epoch. */
   createdAt: Date | string;
 }
@@ -46,7 +50,20 @@ interface CreateDropInput {
   city: string | null;
   coordinate: Coordinate;
   status: DropStatus;
+  /** Server-computed (see domain/expiry). `null` = forever. */
+  expiresAt: Date | null;
 }
+
+/**
+ * "Still alive" predicate, shared by every read that must hide expired drops.
+ * Compared against Postgres' `now()` so the database is the only clock — the
+ * app server's clock never decides whether a drop is gone.
+ *
+ * Deliberately NOT applied to the trail queries or to `findForDevice`: an
+ * author must keep seeing their own expired drops, and anyone who already
+ * saved or revealed one keeps their copy. Otherwise the save button is a lie.
+ */
+const notExpired = sqlClient`(d.expires_at IS NULL OR d.expires_at > now())`;
 
 /** Round to 5 dp (~1 m) so we never store the author's exact GPS fix. */
 const snap = (n: number): number => Math.round(n * 1e5) / 1e5;
@@ -65,6 +82,8 @@ const dropCols = sqlClient`
   d.reveal_count     AS "revealCount",
   d.stood_here       AS "stoodHere",
   d.heart_count      AS "heartCount",
+  d.reply_count      AS "replyCount",
+  d.expires_at       AS "expiresAt",
   d.created_at       AS "createdAt"
 `;
 
@@ -87,7 +106,7 @@ export const dropRepo = {
     const lat = snap(input.coordinate.lat);
     const lng = snap(input.coordinate.lng);
     const rows = await sqlClient<DropRow[]>`
-      INSERT INTO drops (device_id, body, mood, place_label, city, geog, status)
+      INSERT INTO drops (device_id, body, mood, place_label, city, geog, status, expires_at)
       VALUES (
         ${input.deviceId},
         ${input.body},
@@ -95,21 +114,27 @@ export const dropRepo = {
         ${input.placeLabel},
         ${input.city},
         ST_SetSRID(ST_MakePoint(${lng}, ${lat}), 4326)::geography,
-        ${input.status}
+        ${input.status},
+        -- ISO string + explicit cast: postgres.js cannot infer a parameter
+        -- type for a bare Date here and fails to bind it (ERR_INVALID_ARG_TYPE).
+        ${input.expiresAt ? input.expiresAt.toISOString() : null}::timestamptz
       )
       RETURNING
         id, device_id AS "deviceId", body, mood, place_label AS "placeLabel",
         city,
         ST_Y(geog::geometry) AS lat, ST_X(geog::geometry) AS lng,
         status, reveal_count AS "revealCount", stood_here AS "stoodHere",
-        heart_count AS "heartCount", created_at AS "createdAt"
+        heart_count AS "heartCount", reply_count AS "replyCount",
+        expires_at AS "expiresAt",
+        created_at AS "createdAt"
     `;
     return rows[0]!;
   },
 
   /**
-   * Visible drops within `radiusMeters` of a point, nearest first, with the
-   * requesting device's flags. Excludes anything not `visible` (shadow-removal).
+   * Visible, unexpired drops within `radiusMeters` of a point, nearest first,
+   * with the requesting device's flags. Excludes anything not `visible`
+   * (shadow-removal) and anything past its `expires_at`.
    */
   async nearby(
     deviceId: string,
@@ -125,6 +150,7 @@ export const dropRepo = {
       FROM drops d
       ${deviceFlagJoins(deviceId)}
       WHERE d.status = 'visible'
+        AND ${notExpired}
         AND ST_DWithin(
           d.geog,
           ST_SetSRID(ST_MakePoint(${point.lng}, ${point.lat}), 4326)::geography,
@@ -135,7 +161,14 @@ export const dropRepo = {
     `;
   },
 
-  /** A single drop with the device's flags, or undefined. */
+  /**
+   * A single drop with the device's flags, or undefined.
+   *
+   * No expiry predicate on purpose: this backs save/heart/report, the reply
+   * gate, and the reveal's re-fetch — all of which belong to devices that have
+   * already stood there or already saved it. Expiry hides a drop from people
+   * who haven't found it yet; it doesn't confiscate one you already hold.
+   */
   async findForDevice(
     id: string,
     deviceId: string,
@@ -154,6 +187,10 @@ export const dropRepo = {
    * Server-side distance check for the reveal. Returns metres from the one-shot
    * point to the drop, and whether it's within `radiusMeters` — computed in
    * Postgres so a spoofed client distance is irrelevant. Undefined if no drop.
+   *
+   * This is the gate the reveal runs first, so the expiry predicate lives here
+   * as well as in `nearby`: without it an expired drop would stay revealable by
+   * anyone still holding its id, which is a real leak.
    */
   async distanceFrom(
     id: string,
@@ -162,10 +199,10 @@ export const dropRepo = {
   ): Promise<{ distanceMeters: number; within: boolean } | undefined> {
     const rows = await sqlClient<{ distanceMeters: number; within: boolean }[]>`
       SELECT
-        ST_Distance(geog, ST_SetSRID(ST_MakePoint(${point.lng}, ${point.lat}), 4326)::geography) AS "distanceMeters",
-        ST_DWithin(geog, ST_SetSRID(ST_MakePoint(${point.lng}, ${point.lat}), 4326)::geography, ${radiusMeters}) AS within
-      FROM drops
-      WHERE id = ${id} AND status = 'visible'
+        ST_Distance(d.geog, ST_SetSRID(ST_MakePoint(${point.lng}, ${point.lat}), 4326)::geography) AS "distanceMeters",
+        ST_DWithin(d.geog, ST_SetSRID(ST_MakePoint(${point.lng}, ${point.lat}), 4326)::geography, ${radiusMeters}) AS within
+      FROM drops d
+      WHERE d.id = ${id} AND d.status = 'visible' AND ${notExpired}
       LIMIT 1
     `;
     return rows[0];
@@ -192,7 +229,13 @@ export const dropRepo = {
     return true;
   },
 
-  /** List a device's drops by relationship, newest first. Returns rows + total. */
+  /**
+   * List a device's drops by relationship, newest first. Returns rows + total.
+   *
+   * Expired drops are **kept** here: the author must still see their own
+   * history (rendered faded, not hidden), and a saved drop stays readable to
+   * whoever saved it.
+   */
   async trail(
     deviceId: string,
     kind: 'found' | 'saved' | 'dropped',

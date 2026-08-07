@@ -43,10 +43,14 @@ export const apiSecretSchema = z.object({
   mood: moodSchema,
   hearts: z.number(),
   stoodHere: z.number(),
+  /** Visible replies pinned under this drop. Readable only by standing there. */
+  replyCount: z.number(),
   sealed: z.boolean(),
   saved: z.boolean(),
   hearted: z.boolean(),
   distanceMeters: z.number().optional(),
+  /** ms epoch when this drop fades. Absent = forever. */
+  expiresAt: z.number().optional(),
 });
 
 export const paginationSchema = z.object({

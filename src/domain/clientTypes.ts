@@ -56,6 +56,19 @@ export const MOODS: readonly Mood[] = ['joy', 'ache', 'trouble', 'wonder'];
 /** Max length of a secret body (the composer caps at ~280). */
 export const MAX_BODY_LENGTH = 280;
 
+/** Max length of a reply. Deliberately short — one line, not a comment thread. */
+export const MAX_REPLY_LENGTH = 140;
+
+/** A reply as the API returns it. Authorship is never on the wire. */
+export interface ApiReply {
+  id: string;
+  body: string;
+  /** ms epoch. */
+  createdAt: number;
+  /** True when the requesting device wrote it (drives the delete affordance). */
+  mine: boolean;
+}
+
 /**
  * A secret as the API returns it. Superset of the client `Secret`:
  * - `mood`, `hearts`, `stoodHere` are server-owned counters/metadata.
@@ -68,11 +81,18 @@ export interface ApiSecret extends Omit<Secret, 'body'> {
   mood: Mood;
   hearts: number;
   stoodHere: number;
+  /** Visible replies pinned here. Reading them still requires standing here. */
+  replyCount: number;
   sealed: boolean;
   saved: boolean;
   hearted: boolean;
   /** Present on nearby results: server-computed metres from the query point. */
   distanceMeters?: number;
+  /**
+   * ms epoch when this drop fades out of `nearby` and stops being revealable.
+   * Absent = forever. Drives the client's "fades in N days" countdown.
+   */
+  expiresAt?: number;
 }
 
 /**

@@ -17,6 +17,7 @@ import {
   primaryKey,
   text,
   timestamp,
+  uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core';
 
@@ -54,6 +55,15 @@ export const drops = pgTable(
     revealCount: integer('reveal_count').notNull().default(0),
     stoodHere: integer('stood_here').notNull().default(0),
     heartCount: integer('heart_count').notNull().default(0),
+    /** Denormalised count of `visible` replies. See the replies table below. */
+    replyCount: integer('reply_count').notNull().default(0),
+    /**
+     * When this drop stops being findable. NULL = forever (the default, and
+     * what every row predating 0005 carries). Filtered on read against `now()`;
+     * expired rows are never hard-deleted — reports and moderation history
+     * reference them, and the author still sees them in their own Trail.
+     */
+    expiresAt: timestamp('expires_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -64,6 +74,8 @@ export const drops = pgTable(
     index('drops_geog_gix').using('gist', table.geog),
     index('drops_device_idx').on(table.deviceId),
     index('drops_status_idx').on(table.status),
+    // Partial in SQL (WHERE expires_at IS NOT NULL) — see 0005_drop_expiry.sql.
+    index('drops_expires_idx').on(table.expiresAt),
   ],
 );
 
@@ -138,9 +150,16 @@ export const deviceSteps = pgTable(
   table => [primaryKey({ columns: [table.deviceId, table.day] })],
 );
 
-/** Reports feed moderation. N reports flip a drop to `pending`. */
-export const reports = pgTable(
-  'reports',
+/**
+ * One short line pinned under a drop. Writable and readable only by a device
+ * with a `reveals` row for that drop — the physical gate is reused, not
+ * re-derived. Authorship never leaves the server: `device_id` exists purely for
+ * the one-per-device rule, the daily quota, and author-only delete.
+ */
+export type ReplyStatus = 'visible' | 'hidden' | 'pending';
+
+export const replies = pgTable(
+  'replies',
   {
     id: uuid('id').primaryKey().defaultRandom(),
     dropId: uuid('drop_id')
@@ -149,12 +168,46 @@ export const reports = pgTable(
     deviceId: text('device_id')
       .notNull()
       .references(() => devices.id),
+    body: text('body').notNull(),
+    status: text('status').notNull().default('visible'),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  table => [
+    index('replies_drop_idx').on(table.dropId),
+    index('replies_device_idx').on(table.deviceId),
+    // One reply per device per drop, enforced in the DB (see 0004_replies.sql).
+    uniqueIndex('replies_drop_device_uniq').on(table.dropId, table.deviceId),
+  ],
+);
+
+/**
+ * Reports feed moderation. N reports flip the target to `pending`.
+ *
+ * A report targets exactly one of a drop or a reply — enforced in SQL by
+ * `reports_target_chk`, an XOR over the two nullable foreign keys.
+ */
+export const reports = pgTable(
+  'reports',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    dropId: uuid('drop_id').references(() => drops.id, { onDelete: 'cascade' }),
+    replyId: uuid('reply_id').references(() => replies.id, {
+      onDelete: 'cascade',
+    }),
+    deviceId: text('device_id')
+      .notNull()
+      .references(() => devices.id),
     reason: text('reason').notNull(),
     createdAt: timestamp('created_at', { withTimezone: true })
       .notNull()
       .defaultNow(),
   },
-  table => [index('reports_drop_idx').on(table.dropId)],
+  table => [
+    index('reports_drop_idx').on(table.dropId),
+    index('reports_reply_idx').on(table.replyId),
+  ],
 );
 
 /**
@@ -211,6 +264,7 @@ export const tableExports = {
   reveals,
   saves,
   hearts,
+  replies,
   reports,
   deviceSteps,
   routeCache,

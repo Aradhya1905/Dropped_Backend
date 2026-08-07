@@ -61,6 +61,8 @@ async function main(): Promise<void> {
       city: 'Bengaluru',
       coordinate: { lat: CENTRE.lat + s.dLat, lng: CENTRE.lng + s.dLng },
       status: 'visible',
+      // Seed drops never fade — device QA needs a stable set of pins.
+      expiresAt: null,
     });
   }
 

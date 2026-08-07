@@ -14,7 +14,8 @@ export const dropController = {
     request: FastifyRequest<{ Body: z.infer<typeof createDropBody> }>,
     reply: FastifyReply,
   ) {
-    const { body, mood, coordinate, placeLabel, city } = request.body;
+    const { body, mood, coordinate, placeLabel, city, expiresInDays } =
+      request.body;
     const secret = await dropService.create({
       deviceId: request.deviceId,
       body,
@@ -22,6 +23,7 @@ export const dropController = {
       coordinate,
       placeLabel,
       city,
+      expiresInDays,
     });
     return reply.status(201).send(secret);
   },

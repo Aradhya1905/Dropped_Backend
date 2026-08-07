@@ -4,8 +4,9 @@
  * One place owns the wire shape, so field names/casing/ms-epoch are consistent
  * and any drift from the copied client types is a compile error.
  */
-import type { ApiSecret, Mood } from '../domain/clientTypes.js';
+import type { ApiReply, ApiSecret, Mood } from '../domain/clientTypes.js';
 import type { DropRow, DropRowForDevice } from '../repositories/drop.repo.js';
+import type { ReplyRow } from '../repositories/reply.repo.js';
 
 /**
  * Coerce a timestamp to ms epoch. Raw postgres.js queries hand back timestamps
@@ -35,8 +36,12 @@ const baseSecret = (row: DropRowForDevice) => ({
   mood: row.mood as Mood,
   hearts: Number(row.heartCount),
   stoodHere: Number(row.stoodHere),
+  replyCount: Number(row.replyCount ?? 0),
   saved: row.saved,
   hearted: row.hearted,
+  // Omitted entirely when the drop is forever, so the client can treat
+  // "absent" as "no countdown" without a sentinel value.
+  ...(row.expiresAt ? { expiresAt: toEpochMs(row.expiresAt) } : {}),
 });
 
 /** Sealed view: body withheld. Used by nearby (pre-reveal). */
@@ -68,4 +73,19 @@ export function toUnsealedSecret(row: DropRowForDevice): ApiSecret {
  */
 export function toNearbySecret(row: DropRowForDevice): ApiSecret {
   return row.revealed ? toUnsealedSecret(row) : toSealedSecret(row);
+}
+
+/**
+ * A reply on the wire. **`deviceId` is deliberately absent** — authorship never
+ * leaves the server, so the anonymity promise is unambiguous. `mine` is derived
+ * against the requesting device only, so it tells that device which reply it
+ * may delete without telling it anything about anyone else's.
+ */
+export function toApiReply(row: ReplyRow, requestingDeviceId: string): ApiReply {
+  return {
+    id: row.id,
+    body: row.body,
+    createdAt: toEpochMs(row.createdAt),
+    mine: row.deviceId === requestingDeviceId,
+  };
 }

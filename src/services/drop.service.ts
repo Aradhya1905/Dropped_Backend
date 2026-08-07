@@ -6,6 +6,7 @@
  */
 import { env } from '../config/env.js';
 import type { ApiSecret, Coordinate, Mood } from '../domain/clientTypes.js';
+import { expiresAtFrom, type ExpiresInDays } from '../domain/expiry.js';
 import { unprocessable, tooManyRequests } from '../plugins/errorHandler.js';
 import { deviceRepo } from '../repositories/device.repo.js';
 import { dropRepo } from '../repositories/drop.repo.js';
@@ -19,6 +20,8 @@ export interface CreateDropInput {
   coordinate: Coordinate;
   placeLabel?: string;
   city?: string;
+  /** 7 or 30. Absent = forever. */
+  expiresInDays?: ExpiresInDays;
 }
 
 export const dropService = {
@@ -26,6 +29,9 @@ export const dropService = {
    * Create a drop. Enforces the daily quota, screens the body, and stores it
    * `visible` (clean) or `pending` (soft-flagged). Hard-blocked content is
    * rejected (422). The author always gets the unsealed view back.
+   *
+   * `expiresInDays` (7 / 30 / absent = forever) is turned into a stored
+   * `expires_at` here — the client never sends a timestamp.
    */
   async create(input: CreateDropInput): Promise<ApiSecret> {
     const usedToday = await deviceRepo.dropsCreatedSince(input.deviceId, 24);
@@ -49,6 +55,9 @@ export const dropService = {
       city: input.city ?? null,
       coordinate: input.coordinate,
       status,
+      // The author picks a lifespan; the server turns it into an instant. The
+      // request may not carry a timestamp — see createDropBody.
+      expiresAt: expiresAtFrom(new Date(), input.expiresInDays),
     });
 
     // The author sees their own drop unsealed, with their flags (false at birth).
