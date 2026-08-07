@@ -51,6 +51,11 @@ export const apiSecretSchema = z.object({
   distanceMeters: z.number().optional(),
   /** ms epoch when this drop fades. Absent = forever. */
   expiresAt: z.number().optional(),
+  /**
+   * Mood + a short teaser, sent only for a sealed drop inside the whisper band
+   * (150–50 m). Never present alongside `body`.
+   */
+  whisper: z.object({ mood: moodSchema, teaser: z.string() }).optional(),
 });
 
 export const paginationSchema = z.object({

@@ -70,6 +70,16 @@ export interface ApiReply {
 }
 
 /**
+ * What a sealed secret gives away from inside the whisper band (150–50 m): its
+ * mood and the first word or two, never the body. Server-computed — see
+ * `domain/teaser.ts`.
+ */
+export interface Whisper {
+  mood: Mood;
+  teaser: string;
+}
+
+/**
  * A secret as the API returns it. Superset of the client `Secret`:
  * - `mood`, `hearts`, `stoodHere` are server-owned counters/metadata.
  * - `sealed` is true when the body is withheld (nearby query, pre-reveal).
@@ -93,6 +103,12 @@ export interface ApiSecret extends Omit<Secret, 'body'> {
    * Absent = forever. Drives the client's "fades in N days" countdown.
    */
   expiresAt?: number;
+  /**
+   * Present only on a **sealed** nearby result inside the whisper band. Never
+   * accompanies `body` — once you're close enough to read the secret there is
+   * nothing left to whisper.
+   */
+  whisper?: Whisper;
 }
 
 /**

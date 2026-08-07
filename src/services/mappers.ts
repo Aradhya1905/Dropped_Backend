@@ -4,7 +4,9 @@
  * One place owns the wire shape, so field names/casing/ms-epoch are consistent
  * and any drift from the copied client types is a compile error.
  */
-import type { ApiReply, ApiSecret, Mood } from '../domain/clientTypes.js';
+import { env } from '../config/env.js';
+import type { ApiReply, ApiSecret, Mood, Whisper } from '../domain/clientTypes.js';
+import { teaserFrom } from '../domain/teaser.js';
 import type { DropRow, DropRowForDevice } from '../repositories/drop.repo.js';
 import type { ReplyRow } from '../repositories/reply.repo.js';
 
@@ -44,14 +46,46 @@ const baseSecret = (row: DropRowForDevice) => ({
   ...(row.expiresAt ? { expiresAt: toEpochMs(row.expiresAt) } : {}),
 });
 
-/** Sealed view: body withheld. Used by nearby (pre-reveal). */
-export function toSealedSecret(row: DropRowForDevice): ApiSecret {
+/**
+ * Sealed view: body withheld. Used by nearby (pre-reveal).
+ *
+ * `whisper` is passed in rather than derived here so this stays the one place
+ * that owns the sealed wire shape: a caller that has no distance (and so no
+ * business whispering) simply can't produce one.
+ */
+export function toSealedSecret(
+  row: DropRowForDevice,
+  whisper?: Whisper,
+): ApiSecret {
   return {
     ...baseSecret(row),
     sealed: true,
     ...(row.distanceMeters !== undefined
       ? { distanceMeters: Math.round(row.distanceMeters) }
       : {}),
+    ...(whisper ? { whisper } : {}),
+  };
+}
+
+/**
+ * The whisper for a sealed nearby row, or `undefined`.
+ *
+ * Three gates, all of which must hold:
+ * - the row is inside the whisper band, by the server's own `ST_Distance` —
+ *   never a distance the client claimed;
+ * - the row is `visible` — a `pending` drop under moderation review must not
+ *   leak even 18 characters, so this is asserted here as well as in the SQL;
+ * - the device hasn't already revealed it, in which case it gets the body.
+ */
+function whisperFor(row: DropRowForDevice): Whisper | undefined {
+  if (row.revealed) return undefined;
+  if (row.status !== 'visible') return undefined;
+  if (row.distanceMeters === undefined) return undefined;
+  if (row.distanceMeters > env.WHISPER_RADIUS_M) return undefined;
+
+  return {
+    mood: row.mood as Mood,
+    teaser: teaserFrom(row.body, env.WHISPER_TEASER_CHARS),
   };
 }
 
@@ -70,9 +104,16 @@ export function toUnsealedSecret(row: DropRowForDevice): ApiSecret {
 /**
  * For nearby: seal everything the device hasn't already revealed; show the body
  * for ones it has (so a re-open in range stays readable without a round-trip).
+ *
+ * Sealed rows inside the whisper band also carry a teaser. `toUnsealedSecret`
+ * is deliberately left alone — the body is already there on that path, so a
+ * whisper would be redundant and would risk someone wiring a teaser into a
+ * response that also carries the full text.
  */
 export function toNearbySecret(row: DropRowForDevice): ApiSecret {
-  return row.revealed ? toUnsealedSecret(row) : toSealedSecret(row);
+  return row.revealed
+    ? toUnsealedSecret(row)
+    : toSealedSecret(row, whisperFor(row));
 }
 
 /**

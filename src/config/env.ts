@@ -62,6 +62,21 @@ const EnvSchema = z.object({
   /** Reports needed to auto-flip a drop to `pending` (shadow-removed). */
   REPORT_HIDE_THRESHOLD: z.coerce.number().int().positive().default(3),
 
+  /**
+   * Outer radius of the whisper band, in meters. Inside this (but outside the
+   * 50 m reveal) a nearby result carries a teaser instead of nothing.
+   *
+   * Tunable on purpose — unlike `REVEAL_RADIUS_M`, which is the product's one
+   * rule and lives as a hardcoded constant in `domain/clientTypes.ts`.
+   */
+  WHISPER_RADIUS_M: z.coerce.number().int().positive().default(150),
+  /**
+   * Max characters in a whisper teaser (ellipsis included). Keep small — this
+   * is content leaving the 50 m gate. Capped at 40 so a bad env value can't
+   * turn the teaser into the whole confession.
+   */
+  WHISPER_TEASER_CHARS: z.coerce.number().int().positive().max(40).default(18),
+
   // --- Walking-route proxy (GET /route/foot) -------------------------------
   // Keys are optional: with neither set the endpoint simply returns
   // { available: false } and the client draws no path. Tried ORS → Mapbox.
