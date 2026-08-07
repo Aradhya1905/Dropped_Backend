@@ -84,9 +84,13 @@ The core content — a "drop" left at a geographic location.
 | heart_count   | integer                  | NOT NULL, default `0` |
 | reply_count   | integer                  | NOT NULL, default `0`. Count of **visible** replies |
 | expires_at    | timestamptz              | Nullable. When the drop fades. **NULL = forever** |
+| shareable     | boolean                  | NOT NULL, default `true`. May a share link resolve here? |
+| reveal_condition | text                  | Nullable. `'night'` / `'day'`. **NULL = no condition** |
 | created_at    | timestamptz              | NOT NULL, default `now()` |
 
 Indexes: `drops_geog_gix` (GiST on `geog`, for nearby/`ST_DWithin`), `drops_device_idx` (device_id), `drops_status_idx` (status), `drops_expires_idx` (partial, on `expires_at` where it is NOT NULL — most rows are forever).
+
+Constraint: `drops_reveal_condition_chk` — `reveal_condition IS NULL OR reveal_condition IN ('night','day')`.
 
 **Expiry rules** (decided once; don't re-litigate them per query):
 
@@ -94,7 +98,7 @@ Indexes: `drops_geog_gix` (GiST on `geog`, for nearby/`ST_DWithin`), `drops_devi
   *duration* (`expiresInDays`), never a timestamp — the server computes
   `expires_at` from its own clock.
 - Filtering is done **on read**, in SQL, against `now()`: `nearby` and the
-  reveal gate (`distanceFrom`) both carry
+  reveal gate (`revealGate`) both carry
   `(expires_at IS NULL OR expires_at > now())`. Both must have it — filtering
   only `nearby` would leave an expired drop revealable by anyone holding its id.
 - The trail queries and `findForDevice` deliberately **do not** filter. An
@@ -102,6 +106,26 @@ Indexes: `drops_geog_gix` (GiST on `geog`, for nearby/`ST_DWithin`), `drops_devi
   already saved or revealed stays readable — otherwise the save button is a lie.
 - **Nothing is ever hard-deleted on expiry.** `reports` and moderation history
   reference the row. No cron; revisit only if the table grows.
+
+**Reveal-condition rules** (also decided once):
+
+- **Max one condition per drop.** The API takes a single `revealCondition`, not
+  an array, and the check constraint allows exactly two values. 50 m is already
+  a hard ask; 50 m *and* midnight *and* rain means nobody ever reads it.
+- Sunrise/sunset are computed at reveal time from the drop's **own coordinate**
+  and the server clock — see [src/domain/solar.ts](src/domain/solar.ts). Nothing
+  solar is stored, and **no timezone is ever consulted**: everything is UTC plus
+  a longitude, so DST cannot shift when a drop opens.
+- Enforced in `reveal.service`, immediately **after** the distance check. Order
+  matters: someone 500 m away at midnight is told they are too far, not that
+  they are too early. It is also why a stranger cannot probe a drop's condition
+  from across town.
+- `revealCondition` **is** returned on sealed `nearby` rows, on purpose. The pin
+  says *when* it opens, never *what* it says, so a walk can be planned instead
+  of wasted.
+- Weather gating ("when it's raining") needs an external API keyed by
+  coordinate, a cache, and a cost model. Deliberately out of scope — that is
+  why the check constraint is narrow rather than open-ended.
 
 ### `reveals`
 One row per (drop, device) reveal. Drives `reveal_count` and the "Found" trail.

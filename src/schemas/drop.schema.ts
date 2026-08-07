@@ -12,6 +12,7 @@ import {
   errorSchema,
   moodSchema,
   paginationSchema,
+  revealConditionSchema,
 } from './common.schema.js';
 
 export const createDropBody = z.object({
@@ -36,6 +37,14 @@ export const createDropBody = z.object({
    * found by walking to it.
    */
   shareable: z.boolean().optional(),
+  /**
+   * One extra condition on top of the 50 m rule. Absent = none.
+   *
+   * A **single** value, not an array, and that is the enforcement of the "one
+   * condition per drop" rule rather than a description of it: 50 m is already
+   * a hard ask, and 50 m *and* midnight *and* rain means nobody ever reads it.
+   */
+  revealCondition: revealConditionSchema.optional(),
 });
 
 export const nearbyQuery = z.object({

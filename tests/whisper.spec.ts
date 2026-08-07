@@ -35,6 +35,7 @@ function row(over: Partial<DropRowForDevice> = {}): DropRowForDevice {
     replyCount: 0,
     expiresAt: null,
     shareable: true,
+    revealCondition: null,
     createdAt: new Date('2026-01-01T00:00:00Z'),
     saved: false,
     hearted: false,

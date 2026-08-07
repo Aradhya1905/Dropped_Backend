@@ -10,6 +10,7 @@ import type {
   Coordinate,
   DropPreview,
   Mood,
+  RevealCondition,
 } from '../domain/clientTypes.js';
 import { expiresAtFrom, type ExpiresInDays } from '../domain/expiry.js';
 import {
@@ -33,6 +34,8 @@ export interface CreateDropInput {
   expiresInDays?: ExpiresInDays;
   /** May a share link point here? Absent = yes. */
   shareable?: boolean;
+  /** One extra condition on top of the 50 m rule. Absent = none. */
+  revealCondition?: RevealCondition;
 }
 
 export const dropService = {
@@ -72,6 +75,10 @@ export const dropService = {
       // Shareable unless the author said otherwise. The permissive default is
       // the one that matches the column default and every pre-0006 row.
       shareable: input.shareable ?? true,
+      // No condition unless the author chose one. `null`, not `undefined`, so
+      // the column and the type agree that "ungated" is a stored fact rather
+      // than a missing one.
+      revealCondition: input.revealCondition ?? null,
     });
 
     // The author sees their own drop unsealed, with their flags (false at birth).

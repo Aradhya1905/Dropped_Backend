@@ -73,6 +73,17 @@ export const drops = pgTable(
      * found by walking past it, which is the premise of the app.
      */
     shareable: boolean('shareable').notNull().default(true),
+    /**
+     * One extra condition on top of the 50 m rule: `'night'`, `'day'`, or NULL
+     * for no condition (the default, and what every row predating 0008
+     * carries). Constrained to those two values in SQL — see
+     * 0008_reveal_condition.sql.
+     *
+     * Nothing about sunrise/sunset is stored: it is derived at reveal time from
+     * the drop's own `geog` (src/domain/solar.ts), so no timezone ever enters
+     * the picture.
+     */
+    revealCondition: text('reveal_condition'),
     createdAt: timestamp('created_at', { withTimezone: true })
       .notNull()
       .defaultNow(),

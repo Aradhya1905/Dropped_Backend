@@ -4,7 +4,11 @@
  */
 import { z } from 'zod';
 
-import { MAX_BODY_LENGTH, MOODS } from '../domain/clientTypes.js';
+import {
+  MAX_BODY_LENGTH,
+  MOODS,
+  REVEAL_CONDITIONS,
+} from '../domain/clientTypes.js';
 
 export const coordinateSchema = z.object({
   lat: z.number().min(-90).max(90),
@@ -13,6 +17,15 @@ export const coordinateSchema = z.object({
 
 export const moodSchema = z.enum(
   MOODS as unknown as [string, ...string[]],
+);
+
+/**
+ * The one extra condition a drop may carry. A closed enum, matched by the
+ * `drops_reveal_condition_chk` constraint in SQL — the composer offers exactly
+ * these two, and weather gating is a separate, later ticket.
+ */
+export const revealConditionSchema = z.enum(
+  REVEAL_CONDITIONS as unknown as [string, ...string[]],
 );
 
 export const bodySchema = z
@@ -62,6 +75,12 @@ export const apiSecretSchema = z.object({
    * whoever receives it.
    */
   shareable: z.boolean(),
+  /**
+   * The extra condition guarding this drop. Absent = none. Present on sealed
+   * rows on purpose — a pin that says "waits for dark" lets someone plan the
+   * walk, and saying *when* gives away nothing about *what*.
+   */
+  revealCondition: revealConditionSchema.optional(),
 });
 
 export const paginationSchema = z.object({

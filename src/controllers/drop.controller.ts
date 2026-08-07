@@ -6,7 +6,7 @@ import type { FastifyReply, FastifyRequest } from 'fastify';
 import type { z } from 'zod';
 
 import { dropService } from '../services/drop.service.js';
-import type { Mood } from '../domain/clientTypes.js';
+import type { Mood, RevealCondition } from '../domain/clientTypes.js';
 import type {
   createDropBody,
   dropIdParams,
@@ -18,8 +18,16 @@ export const dropController = {
     request: FastifyRequest<{ Body: z.infer<typeof createDropBody> }>,
     reply: FastifyReply,
   ) {
-    const { body, mood, coordinate, placeLabel, city, expiresInDays, shareable } =
-      request.body;
+    const {
+      body,
+      mood,
+      coordinate,
+      placeLabel,
+      city,
+      expiresInDays,
+      shareable,
+      revealCondition,
+    } = request.body;
     const secret = await dropService.create({
       deviceId: request.deviceId,
       body,
@@ -29,6 +37,7 @@ export const dropController = {
       city,
       expiresInDays,
       shareable,
+      revealCondition: revealCondition as RevealCondition | undefined,
     });
     return reply.status(201).send(secret);
   },

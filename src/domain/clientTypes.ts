@@ -8,6 +8,7 @@
  * The whole app is: a `Secret` is `Drop`ped at a `Coordinate`; another user
  * walks toward it; once within range its `RevealState` flips to `revealed`.
  */
+import type { RevealCondition } from './solar.js';
 
 /** A WGS-84 lat/lng point. */
 export interface Coordinate {
@@ -55,6 +56,16 @@ export const MOODS: readonly Mood[] = ['joy', 'ache', 'trouble', 'wonder'];
 
 /** Max length of a secret body (the composer caps at ~280). */
 export const MAX_BODY_LENGTH = 280;
+
+/**
+ * An optional second condition on top of the 50 m rule. `night` opens between
+ * sunset and sunrise *at the drop's coordinate*; `day` is the exact inverse.
+ * Absent means no condition, which is the vast majority of drops.
+ *
+ * Re-exported from `domain/solar`, which owns the arithmetic behind it.
+ */
+export type { RevealCondition };
+export { REVEAL_CONDITIONS } from './solar.js';
 
 /** Max length of a reply. Deliberately short — one line, not a comment thread. */
 export const MAX_REPLY_LENGTH = 140;
@@ -115,6 +126,12 @@ export interface ApiSecret extends Omit<Secret, 'body'> {
    * offering one would hand someone a dead link.
    */
   shareable: boolean;
+  /**
+   * The extra condition guarding this drop, if any. Sent on sealed rows too —
+   * that is the point: the pin says *when* it opens without saying *what* it
+   * says, so someone can plan the walk instead of arriving at the wrong hour.
+   */
+  revealCondition?: RevealCondition;
 }
 
 /**
