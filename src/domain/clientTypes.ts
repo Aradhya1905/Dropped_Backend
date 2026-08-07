@@ -109,6 +109,34 @@ export interface ApiSecret extends Omit<Secret, 'body'> {
    * nothing left to whisper.
    */
   whisper?: Whisper;
+  /**
+   * Whether a share link may resolve to this drop. Drives whether the client
+   * offers a share sheet at all — a link to an opted-out drop 404s, so
+   * offering one would hand someone a dead link.
+   */
+  shareable: boolean;
+}
+
+/**
+ * What a shared link is allowed to reveal about a spot before anyone walks
+ * there — `GET /drops/:id/preview`.
+ *
+ * Note what is NOT here: no `body`, no `sealed`, no per-device flags, and the
+ * `coordinate` is the coarsened one (~100 m, see domain/coarsen), never the
+ * stored point. A link is forwardable, so this shape is the whole of what a
+ * stranger with the URL can learn.
+ */
+export interface DropPreview {
+  id: string;
+  coordinate: Coordinate;
+  placeLabel?: string;
+  city?: string;
+  mood: Mood;
+  /** ms epoch. */
+  createdAt: number;
+  revealCount: number;
+  /** ms epoch when the drop fades. Absent = forever. */
+  expiresAt?: number;
 }
 
 /**

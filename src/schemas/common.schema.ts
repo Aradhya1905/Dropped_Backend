@@ -56,6 +56,12 @@ export const apiSecretSchema = z.object({
    * (150–50 m). Never present alongside `body`.
    */
   whisper: z.object({ mood: moodSchema, teaser: z.string() }).optional(),
+  /**
+   * Whether a share link may point here. Surfaced to every reader, not just
+   * the author: otherwise a reader offers a share sheet whose link 404s for
+   * whoever receives it.
+   */
+  shareable: z.boolean(),
 });
 
 export const paginationSchema = z.object({

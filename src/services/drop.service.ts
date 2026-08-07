@@ -5,13 +5,22 @@
  * no Fastify.
  */
 import { env } from '../config/env.js';
-import type { ApiSecret, Coordinate, Mood } from '../domain/clientTypes.js';
+import type {
+  ApiSecret,
+  Coordinate,
+  DropPreview,
+  Mood,
+} from '../domain/clientTypes.js';
 import { expiresAtFrom, type ExpiresInDays } from '../domain/expiry.js';
-import { unprocessable, tooManyRequests } from '../plugins/errorHandler.js';
+import {
+  notFound,
+  unprocessable,
+  tooManyRequests,
+} from '../plugins/errorHandler.js';
 import { deviceRepo } from '../repositories/device.repo.js';
 import { dropRepo } from '../repositories/drop.repo.js';
 import { moderationService } from './moderation.service.js';
-import { toNearbySecret, toUnsealedSecret } from './mappers.js';
+import { toDropPreview, toNearbySecret, toUnsealedSecret } from './mappers.js';
 
 export interface CreateDropInput {
   deviceId: string;
@@ -22,6 +31,8 @@ export interface CreateDropInput {
   city?: string;
   /** 7 or 30. Absent = forever. */
   expiresInDays?: ExpiresInDays;
+  /** May a share link point here? Absent = yes. */
+  shareable?: boolean;
 }
 
 export const dropService = {
@@ -58,6 +69,9 @@ export const dropService = {
       // The author picks a lifespan; the server turns it into an instant. The
       // request may not carry a timestamp — see createDropBody.
       expiresAt: expiresAtFrom(new Date(), input.expiresInDays),
+      // Shareable unless the author said otherwise. The permissive default is
+      // the one that matches the column default and every pre-0006 row.
+      shareable: input.shareable ?? true,
     });
 
     // The author sees their own drop unsealed, with their flags (false at birth).
@@ -98,5 +112,22 @@ export const dropService = {
       secrets: kept.map(toNearbySecret),
       hiddenByFilter: rows.length - kept.length,
     };
+  },
+
+  /**
+   * Public metadata for a shared spot. The one read that serves a caller who
+   * has neither walked here nor revealed anything — so it hands back the least
+   * it can: a mood, a place label, a count, and a coordinate blunted to ~100 m.
+   *
+   * Hidden, pending, and expired drops all 404 with the same message a
+   * nonexistent id gets. Distinguishing them would let anyone holding a link
+   * confirm that a drop is real and merely under moderation.
+   */
+  async preview(id: string): Promise<DropPreview> {
+    const row = await dropRepo.findPublic(id);
+    if (!row) {
+      throw notFound('This isn’t here anymore.');
+    }
+    return toDropPreview(row);
   },
 };
