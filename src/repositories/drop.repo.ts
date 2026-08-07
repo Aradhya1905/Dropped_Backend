@@ -8,7 +8,11 @@
  * that device's saved/hearted/revealed flags — so services never see SQL.
  */
 import { sqlClient } from '../db/client.js';
-import type { Coordinate, EchoKind } from '../domain/clientTypes.js';
+import type {
+  Coordinate,
+  EchoKind,
+  RevealCondition,
+} from '../domain/clientTypes.js';
 import type { EchoWindow } from '../domain/echo.js';
 import type { DropStatus } from '../db/schema.js';
 
@@ -32,6 +36,8 @@ export interface DropRow {
   expiresAt: Date | string | null;
   /** Whether a share link may resolve to it. Never gates walking to it. */
   shareable: boolean;
+  /** `'night'` / `'day'` / `null` for no condition beyond the 50 m rule. */
+  revealCondition: RevealCondition | null;
   /** postgres.js returns timestamps as strings; mappers coerce to ms epoch. */
   createdAt: Date | string;
 }
@@ -53,6 +59,20 @@ export interface DropPreviewRow {
   revealCount: number;
   expiresAt: Date | string | null;
   createdAt: Date | string;
+}
+
+/**
+ * What the reveal needs to decide, before anything is unsealed: how far away
+ * the walker is, and under what condition (if any) the drop opens — plus the
+ * drop's own coordinate, because that is the point the sun is computed for.
+ */
+export interface RevealGate {
+  distanceMeters: number;
+  within: boolean;
+  /** The drop's stored coordinate, not the walker's claimed one. */
+  lat: number;
+  lng: number;
+  revealCondition: RevealCondition | null;
 }
 
 /** DropRow plus the requesting device's relationship to it. */
@@ -86,6 +106,8 @@ interface CreateDropInput {
   expiresAt: Date | null;
   /** Author's choice: may a share link point here? Defaults to true. */
   shareable: boolean;
+  /** Author's choice: one extra condition, or `null` for none. */
+  revealCondition: RevealCondition | null;
 }
 
 /**
@@ -119,6 +141,7 @@ const dropCols = sqlClient`
   d.reply_count      AS "replyCount",
   d.expires_at       AS "expiresAt",
   d.shareable,
+  d.reveal_condition AS "revealCondition",
   d.created_at       AS "createdAt"
 `;
 
@@ -141,7 +164,7 @@ export const dropRepo = {
     const lat = snap(input.coordinate.lat);
     const lng = snap(input.coordinate.lng);
     const rows = await sqlClient<DropRow[]>`
-      INSERT INTO drops (device_id, body, mood, place_label, city, geog, status, expires_at, shareable)
+      INSERT INTO drops (device_id, body, mood, place_label, city, geog, status, expires_at, shareable, reveal_condition)
       VALUES (
         ${input.deviceId},
         ${input.body},
@@ -153,7 +176,8 @@ export const dropRepo = {
         -- ISO string + explicit cast: postgres.js cannot infer a parameter
         -- type for a bare Date here and fails to bind it (ERR_INVALID_ARG_TYPE).
         ${input.expiresAt ? input.expiresAt.toISOString() : null}::timestamptz,
-        ${input.shareable}
+        ${input.shareable},
+        ${input.revealCondition}
       )
       RETURNING
         id, device_id AS "deviceId", body, mood, place_label AS "placeLabel",
@@ -162,6 +186,7 @@ export const dropRepo = {
         status, reveal_count AS "revealCount", stood_here AS "stoodHere",
         heart_count AS "heartCount", reply_count AS "replyCount",
         expires_at AS "expiresAt", shareable,
+        reveal_condition AS "revealCondition",
         created_at AS "createdAt"
     `;
     return rows[0]!;
@@ -333,23 +358,32 @@ export const dropRepo = {
   },
 
   /**
-   * Server-side distance check for the reveal. Returns metres from the one-shot
-   * point to the drop, and whether it's within `radiusMeters` — computed in
-   * Postgres so a spoofed client distance is irrelevant. Undefined if no drop.
+   * Server-side gate data for the reveal: metres from the one-shot point to the
+   * drop, whether that is within `radiusMeters`, and everything else the reveal
+   * must check before unsealing. Computed in Postgres so a spoofed client
+   * distance is irrelevant. Undefined if no drop.
    *
    * This is the gate the reveal runs first, so the expiry predicate lives here
    * as well as in `nearby`: without it an expired drop would stay revealable by
    * anyone still holding its id, which is a real leak.
+   *
+   * It also returns the drop's **own** coordinate alongside its
+   * `revealCondition`, so the time gate is evaluated against where the drop is,
+   * not where the walker claims to be — one query, and no opportunity to hand
+   * the sun the wrong point.
    */
-  async distanceFrom(
+  async revealGate(
     id: string,
     point: Coordinate,
     radiusMeters: number,
-  ): Promise<{ distanceMeters: number; within: boolean } | undefined> {
-    const rows = await sqlClient<{ distanceMeters: number; within: boolean }[]>`
+  ): Promise<RevealGate | undefined> {
+    const rows = await sqlClient<RevealGate[]>`
       SELECT
         ST_Distance(d.geog, ST_SetSRID(ST_MakePoint(${point.lng}, ${point.lat}), 4326)::geography) AS "distanceMeters",
-        ST_DWithin(d.geog, ST_SetSRID(ST_MakePoint(${point.lng}, ${point.lat}), 4326)::geography, ${radiusMeters}) AS within
+        ST_DWithin(d.geog, ST_SetSRID(ST_MakePoint(${point.lng}, ${point.lat}), 4326)::geography, ${radiusMeters}) AS within,
+        ST_Y(d.geog::geometry) AS lat,
+        ST_X(d.geog::geometry) AS lng,
+        d.reveal_condition AS "revealCondition"
       FROM drops d
       WHERE d.id = ${id} AND d.status = 'visible' AND ${notExpired}
       LIMIT 1

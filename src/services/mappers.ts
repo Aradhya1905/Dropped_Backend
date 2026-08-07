@@ -56,6 +56,10 @@ const baseSecret = (row: DropRowForDevice) => ({
   // Omitted entirely when the drop is forever, so the client can treat
   // "absent" as "no countdown" without a sentinel value.
   ...(row.expiresAt ? { expiresAt: toEpochMs(row.expiresAt) } : {}),
+  // On the base secret, so it rides along on the SEALED view too. That is the
+  // whole point of a time gate being visible: the pin can say "waits for dark"
+  // before the walk, which is *when* it opens, never *what* it says.
+  ...(row.revealCondition ? { revealCondition: row.revealCondition } : {}),
 });
 
 /**

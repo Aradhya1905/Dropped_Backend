@@ -62,6 +62,7 @@ async function main(): Promise<void> {
       coordinate: { lat: CENTRE.lat + s.dLat, lng: CENTRE.lng + s.dLng },
       status: 'visible',
       shareable: true,
+      revealCondition: null,
       // Seed drops never fade — device QA needs a stable set of pins.
       expiresAt: null,
     });
