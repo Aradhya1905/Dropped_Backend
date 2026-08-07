@@ -82,6 +82,7 @@ postgis;` itself, so nothing else changes.
 | GET        | `/drops/trail/found`   | Drops this device has revealed.               |
 | GET        | `/drops/trail/saved`   | Drops this device has saved.                   |
 | GET        | `/drops/trail/dropped` | Drops this device created.                     |
+| GET        | `/drops/echoes`        | Anniversaries near a point (this device only). |
 
 Full request/response shapes are in the design doc.
 

@@ -6,10 +6,12 @@ import type { FastifyReply, FastifyRequest } from 'fastify';
 import type { z } from 'zod';
 
 import { dropService } from '../services/drop.service.js';
+import { echoService } from '../services/echo.service.js';
 import type { Mood } from '../domain/clientTypes.js';
 import type {
   createDropBody,
   dropIdParams,
+  echoesQuery,
   nearbyQuery,
 } from '../schemas/drop.schema.js';
 
@@ -45,6 +47,20 @@ export const dropController = {
       mood as Mood[] | undefined,
     );
     return reply.send({ secrets, hiddenByFilter });
+  },
+
+  /** Anniversaries near a point, for the calling device only. */
+  async echoes(
+    request: FastifyRequest<{ Querystring: z.infer<typeof echoesQuery> }>,
+    reply: FastifyReply,
+  ) {
+    const { lat, lng, radiusMeters } = request.query;
+    const echoes = await echoService.near(
+      request.deviceId,
+      { lat, lng },
+      radiusMeters,
+    );
+    return reply.send({ echoes });
   },
 
   /** Public metadata for a shared spot. No device relationship, no body. */

@@ -69,6 +69,35 @@ export const nearbyResponse = z.object({
 });
 
 /**
+ * `GET /drops/echoes?lat&lng&radiusMeters` — anniversaries near a point.
+ *
+ * No pagination and no mood filter on purpose: the answer is at most a handful
+ * of places, and a filtered memory is not a memory.
+ */
+export const echoesQuery = z.object({
+  lat: z.coerce.number().min(-90).max(90),
+  lng: z.coerce.number().min(-180).max(180),
+  radiusMeters: z.coerce.number().positive().optional(),
+});
+
+export const echoesResponse = z.object({
+  echoes: z.array(
+    z.object({
+      /**
+       * Sealed unless this device revealed the drop or wrote it. An echo says
+       * *you were here*; reading still costs the same 50 m walk it always did.
+       */
+      secret: apiSecretSchema,
+      interval: z.enum(['6mo', '1yr', '2yr']),
+      /** `dropped` = you left it here. `found` = you revealed it here. */
+      kind: z.enum(['dropped', 'found']),
+      /** ms epoch of the remembered drop / reveal. */
+      stoodAt: z.number(),
+    }),
+  ),
+});
+
+/**
  * Public metadata for a shared spot — what `GET /drops/:id/preview` returns to
  * someone who has a link but has not walked anywhere.
  *

@@ -77,6 +77,22 @@ const EnvSchema = z.object({
    */
   WHISPER_TEASER_CHARS: z.coerce.number().int().positive().max(40).default(18),
 
+  // --- Anniversary echoes (GET /drops/echoes) ------------------------------
+  /**
+   * How close you have to pass a place for it to echo, in meters.
+   *
+   * Much tighter than `NEARBY_DEFAULT_RADIUS_M`: nearby answers "what could I
+   * walk to", an echo answers "you are standing where you stood a year ago".
+   * Widen this and the memory stops being about a place.
+   */
+  ECHO_DEFAULT_RADIUS_M: z.coerce.number().int().positive().default(250),
+  ECHO_MAX_RADIUS_M: z.coerce.number().int().positive().default(1000),
+  /**
+   * Max echoes returned per call. Small by design — this is one quiet card, not
+   * a feed, and the client polls the route from a location watch.
+   */
+  ECHO_MAX_RESULTS: z.coerce.number().int().positive().max(50).default(10),
+
   // --- Walking-route proxy (GET /route/foot) -------------------------------
   // Keys are optional: with neither set the endpoint simply returns
   // { available: false } and the client draws no path. Tried ORS → Mapbox.

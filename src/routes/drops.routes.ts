@@ -14,6 +14,8 @@ import {
   apiSecretSchema,
   createDropBody,
   dropIdParams,
+  echoesQuery,
+  echoesResponse,
   errorSchema,
   heartResponse,
   nearbyQuery,
@@ -71,6 +73,26 @@ export async function dropsRoutes(app: FastifyInstance): Promise<void> {
     '/drops/trail/dropped',
     { schema: { querystring: trailQuery, response: { 200: trailResponse } } },
     trailController.dropped,
+  );
+
+  // Anniversary echoes. Answers only about the calling device's own past —
+  // drops it left, secrets it revealed — so there is nothing here to scrape
+  // that the device didn't already do.
+  //
+  // The tighter limit is about battery and cost, not disclosure: the client
+  // polls this from a location watch, and its own discipline (once per day per
+  // ~250 m) lives on the device where it can be turned off. This is the floor
+  // under a client that gets that wrong.
+  r.get(
+    '/drops/echoes',
+    {
+      config: { rateLimit: { max: 30, timeWindow: '1 minute' } },
+      schema: {
+        querystring: echoesQuery,
+        response: { 200: echoesResponse, 429: errorSchema },
+      },
+    },
+    dropController.echoes,
   );
 
   // Share-a-spot: public metadata for one drop, for someone who has a link and

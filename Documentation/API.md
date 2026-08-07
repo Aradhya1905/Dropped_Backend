@@ -164,6 +164,30 @@ Per-device scrapbook. Entries are **unsealed** (earned or owned).
 
 ---
 
+### `GET /drops/echoes`
+Anniversary echoes — places **this device** dropped or revealed something a round
+interval ago (6 months / 1 year / 2 years, ±3 days), within a short radius of a
+point. Strictly the caller's own past: a device with no history near the point
+gets `[]`.
+
+Each entry's `secret` obeys the ordinary rule — unsealed only when this device
+revealed the drop or wrote it. Drops that moderation took down (`status != 'visible'`)
+never echo. Expired drops still do, matching the trail: expiry hides a drop from
+people who never found it, it doesn't confiscate one you already stood inside.
+
+**Query params:**
+| Name | Type | Required | Notes |
+| --- | --- | --- | --- |
+| `lat` | number | ✅ | -90..90 |
+| `lng` | number | ✅ | -180..180 |
+| `radiusMeters` | number | ❌ | > 0; default 250, capped at 1000 |
+
+- **200** → `{ echoes: Array<{ secret: ApiSecret; interval: '6mo'|'1yr'|'2yr'; kind: 'dropped'|'found'; stoodAt: number }> }`
+- **429** → `{ message }` — 30/min per device (the client is expected to ask
+  once a day per ~250 m of movement)
+
+---
+
 ## Quick reference
 
 | Method | Path | Body | Success |
@@ -177,6 +201,7 @@ Per-device scrapbook. Entries are **unsealed** (earned or owned).
 | POST/DELETE | `/drops/{id}/heart` | — | `{ hearted, hearts }` |
 | POST | `/drops/{id}/report` | `{ reason }` | `{ reported: true }` |
 | GET | `/drops/trail/{found\|saved\|dropped}` | — (query) | `{ secrets, total }` |
+| GET | `/drops/echoes` | — (query) | `{ echoes }` |
 
 > **Tip for the frontend:** point an OpenAPI codegen tool (e.g. `openapi-typescript`,
 > `orval`, or `@hey-api/openapi-ts`) at [`openapi.json`](./openapi.json) to generate

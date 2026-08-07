@@ -82,6 +82,9 @@ export const drops = pgTable(
     // (USING gist); declared here so drizzle-kit is aware of it.
     index('drops_geog_gix').using('gist', table.geog),
     index('drops_device_idx').on(table.deviceId),
+    // Anniversary echoes: "this device's drops, in a window around a year ago".
+    // See 0007_echo_indexes.sql.
+    index('drops_device_created_idx').on(table.deviceId, table.createdAt),
     index('drops_status_idx').on(table.status),
     // Partial in SQL (WHERE expires_at IS NOT NULL) — see 0005_drop_expiry.sql.
     index('drops_expires_idx').on(table.expiresAt),
@@ -102,7 +105,13 @@ export const reveals = pgTable(
       .notNull()
       .defaultNow(),
   },
-  table => [primaryKey({ columns: [table.dropId, table.deviceId] })],
+  table => [
+    primaryKey({ columns: [table.dropId, table.deviceId] }),
+    // The PK is (drop_id, device_id) and so cannot answer "everything this
+    // device revealed around a year ago" — the echo query. See
+    // 0007_echo_indexes.sql.
+    index('reveals_device_created_idx').on(table.deviceId, table.createdAt),
+  ],
 );
 
 /** Saves (bookmarks), keyed by device. Drives the Saved trail + `saved` flag. */

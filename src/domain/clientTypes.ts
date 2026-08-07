@@ -8,6 +8,9 @@
  * The whole app is: a `Secret` is `Drop`ped at a `Coordinate`; another user
  * walks toward it; once within range its `RevealState` flips to `revealed`.
  */
+import type { EchoInterval } from './echo.js';
+
+export type { EchoInterval };
 
 /** A WGS-84 lat/lng point. */
 export interface Coordinate {
@@ -137,6 +140,31 @@ export interface DropPreview {
   revealCount: number;
   /** ms epoch when the drop fades. Absent = forever. */
   expiresAt?: number;
+}
+
+/**
+ * How a device came to stand at a place a round interval ago:
+ * - `dropped` — it left the secret there;
+ * - `found`   — it walked there and revealed someone else's.
+ *
+ * Kept on the wire because the two deserve different words: "a year ago you
+ * left something here" is not "a year ago you found something here".
+ */
+export type EchoKind = 'dropped' | 'found';
+
+/**
+ * One anniversary — `GET /drops/echoes`.
+ *
+ * `secret` is the ordinary secret shape, and obeys the ordinary rule: sealed
+ * unless this device has revealed it (or wrote it). An echo is a reminder that
+ * you were here, never a way to read something you haven't walked to.
+ */
+export interface Echo {
+  secret: ApiSecret;
+  interval: EchoInterval;
+  kind: EchoKind;
+  /** ms epoch of the drop / reveal being remembered. */
+  stoodAt: number;
 }
 
 /**

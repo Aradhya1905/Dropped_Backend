@@ -8,7 +8,8 @@
  * that device's saved/hearted/revealed flags — so services never see SQL.
  */
 import { sqlClient } from '../db/client.js';
-import type { Coordinate } from '../domain/clientTypes.js';
+import type { Coordinate, EchoKind } from '../domain/clientTypes.js';
+import type { EchoWindow } from '../domain/echo.js';
 import type { DropStatus } from '../db/schema.js';
 
 /** A drop as the repo returns it (coordinate already split out of geography). */
@@ -61,6 +62,16 @@ export interface DropRowForDevice extends DropRow {
   revealed: boolean;
   /** Only set by nearby(): server-computed metres from the query point. */
   distanceMeters?: number;
+}
+
+/**
+ * An anniversary hit: the drop, this device's flags, and the event being
+ * remembered (its own drop, or its reveal of someone else's).
+ */
+export interface EchoRow extends DropRowForDevice {
+  echoKind: EchoKind;
+  /** When the remembered thing happened — the drop's or the reveal's time. */
+  stoodAt: Date | string;
 }
 
 interface CreateDropInput {
@@ -243,6 +254,82 @@ export const dropRepo = {
       LIMIT 1
     `;
     return rows[0];
+  },
+
+  /**
+   * Anniversary echoes: drops this device left, or revealed, whose timestamp
+   * falls inside one of `windows`, within `radiusMeters` of a point.
+   *
+   * Two predicates are worth reading twice:
+   *
+   * - **`status = 'visible'` is not optional.** An echo of a drop that was
+   *   reported and taken down is the single worst thing this feature could do.
+   *   The window filter is pushed down into each branch of the union so it also
+   *   stays selective against the (device_id, created_at) indexes from 0007.
+   * - **`notExpired` is deliberately absent**, exactly as in `trail()`. Every
+   *   row here belongs to a device that already wrote it or already stood
+   *   there, and expiry hides a drop from people who never found it — it does
+   *   not confiscate one you already hold.
+   *
+   * Rows are *not* deduplicated here: a device that revealed its own drop can
+   * match both branches with two different timestamps, and which of the two is
+   * the better memory is a product question, not a SQL one. The service does it
+   * — hence the caller's `limit` should already allow for the overlap.
+   */
+  async echoes(
+    deviceId: string,
+    point: Coordinate,
+    radiusMeters: number,
+    windows: EchoWindow[],
+    limit: number,
+  ): Promise<EchoRow[]> {
+    if (windows.length === 0) return [];
+
+    // `(col BETWEEN a AND b) OR (col BETWEEN c AND d) OR …`, built as nested
+    // postgres.js fragments so the instants stay bound parameters. Written out
+    // per column rather than parameterized by one: a column name interpolated
+    // into a fragment has to go through `sql.unsafe`, and no anniversary is
+    // worth an unsafe() in a query that also takes a device id.
+    const droppedInWindow = windows
+      .map(
+        w => sqlClient`d.created_at BETWEEN ${w.from.toISOString()}::timestamptz AND ${w.to.toISOString()}::timestamptz`,
+      )
+      .reduce((acc, frag) => sqlClient`${acc} OR ${frag}`);
+
+    const revealedInWindow = windows
+      .map(
+        w => sqlClient`rv.created_at BETWEEN ${w.from.toISOString()}::timestamptz AND ${w.to.toISOString()}::timestamptz`,
+      )
+      .reduce((acc, frag) => sqlClient`${acc} OR ${frag}`);
+
+    const origin = sqlClient`ST_SetSRID(ST_MakePoint(${point.lng}, ${point.lat}), 4326)::geography`;
+
+    return sqlClient<EchoRow[]>`
+      WITH ev AS (
+        SELECT d.id AS drop_id, 'dropped' AS kind, d.created_at AS stood_at
+        FROM drops d
+        WHERE d.device_id = ${deviceId}
+          AND (${droppedInWindow})
+        UNION ALL
+        SELECT rv.drop_id, 'found' AS kind, rv.created_at AS stood_at
+        FROM reveals rv
+        WHERE rv.device_id = ${deviceId}
+          AND (${revealedInWindow})
+      )
+      SELECT
+        ${dropCols},
+        ST_Distance(d.geog, ${origin}) AS "distanceMeters",
+        ${deviceFlagCols},
+        ev.kind     AS "echoKind",
+        ev.stood_at AS "stoodAt"
+      FROM ev
+      JOIN drops d ON d.id = ev.drop_id
+      ${deviceFlagJoins(deviceId)}
+      WHERE d.status = 'visible'
+        AND ST_DWithin(d.geog, ${origin}, ${radiusMeters})
+      ORDER BY ev.stood_at ASC
+      LIMIT ${limit}
+    `;
   },
 
   /**

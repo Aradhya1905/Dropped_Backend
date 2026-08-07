@@ -129,6 +129,27 @@ export function toNearbySecret(row: DropRowForDevice): ApiSecret {
 }
 
 /**
+ * For an anniversary echo: the body only for a drop this device has actually
+ * earned — one it revealed, or one it wrote.
+ *
+ * The reveal case is the 50 m rule: an echo must never become a way to read a
+ * secret you merely walked *past* a year ago without opening. The author case
+ * is the same rule `trail('dropped')` already applies — you cannot leak a
+ * confession to the person who typed it.
+ *
+ * No whisper, ever, on this path. A whisper is the reward for closing the last
+ * hundred metres *now*; smuggling one into a memory would let anyone harvest
+ * teasers from every drop they ever stood near.
+ */
+export function toEchoSecret(
+  row: DropRowForDevice,
+  requestingDeviceId: string,
+): ApiSecret {
+  const mine = row.deviceId === requestingDeviceId;
+  return row.revealed || mine ? toUnsealedSecret(row) : toSealedSecret(row);
+}
+
+/**
  * Public view of a spot, for a shared link. The row it takes carries no body at
  * all (see `DropPreviewRow`), and the coordinate is coarsened **here**, on the
  * server — the client is never handed the exact point and asked to round it.
