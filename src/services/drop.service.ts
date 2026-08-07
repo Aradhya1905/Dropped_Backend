@@ -69,17 +69,34 @@ export const dropService = {
     });
   },
 
-  /** Visible drops near a point, sealed unless this device already revealed them. */
+  /**
+   * Visible drops near a point, sealed unless this device already revealed them.
+   *
+   * `moods` (undefined = every mood) narrows what comes back. The filter is
+   * applied *here* rather than as a SQL predicate on purpose: the map has to
+   * tell the user how many drops the filter is hiding, and splitting the same
+   * nearest-200 result set gives that count exactly, from one query, with the
+   * hidden rows discarded before they ever reach the wire.
+   */
   async nearby(
     deviceId: string,
     point: Coordinate,
     radiusMeters: number | undefined,
-  ): Promise<ApiSecret[]> {
+    moods?: Mood[],
+  ): Promise<{ secrets: ApiSecret[]; hiddenByFilter: number }> {
     const radius = Math.min(
       radiusMeters ?? env.NEARBY_DEFAULT_RADIUS_M,
       env.NEARBY_MAX_RADIUS_M,
     );
     const rows = await dropRepo.nearby(deviceId, point, radius, 200);
-    return rows.map(toNearbySecret);
+    if (moods === undefined || moods.length === 0) {
+      return { secrets: rows.map(toNearbySecret), hiddenByFilter: 0 };
+    }
+    const wanted = new Set<string>(moods);
+    const kept = rows.filter(r => wanted.has(r.mood));
+    return {
+      secrets: kept.map(toNearbySecret),
+      hiddenByFilter: rows.length - kept.length,
+    };
   },
 };

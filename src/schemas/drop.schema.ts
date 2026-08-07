@@ -33,9 +33,31 @@ export const nearbyQuery = z.object({
   lat: z.coerce.number().min(-90).max(90),
   lng: z.coerce.number().min(-180).max(180),
   radiusMeters: z.coerce.number().positive().optional(),
+  /**
+   * Comma-separated mood filter, e.g. `?mood=joy,wonder`. Absent = every mood.
+   *
+   * Absent must stay `undefined` rather than `[]`: "all moods" and "no moods"
+   * are opposite answers, and collapsing them returns an empty map.
+   */
+  mood: z
+    .string()
+    .optional()
+    .transform(s =>
+      s === undefined ? undefined : s.split(',').map(m => m.trim()).filter(Boolean),
+    )
+    .pipe(z.array(moodSchema).min(1).max(4).optional()),
 });
 
-export const nearbyResponse = z.object({ secrets: z.array(apiSecretSchema) });
+export const nearbyResponse = z.object({
+  secrets: z.array(apiSecretSchema),
+  /**
+   * Drops in range that the mood filter removed. The map shows this so
+   * filtering reads as a *view* over the world rather than as content that
+   * doesn't exist — the product promise is "you can only read what you walk
+   * to", and a silent filter muddies it. Always 0 when no filter is applied.
+   */
+  hiddenByFilter: z.number(),
+});
 
 export const revealBody = z.object({ coordinate: coordinateSchema });
 

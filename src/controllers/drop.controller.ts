@@ -32,12 +32,13 @@ export const dropController = {
     request: FastifyRequest<{ Querystring: z.infer<typeof nearbyQuery> }>,
     reply: FastifyReply,
   ) {
-    const { lat, lng, radiusMeters } = request.query;
-    const secrets = await dropService.nearby(
+    const { lat, lng, radiusMeters, mood } = request.query;
+    const { secrets, hiddenByFilter } = await dropService.nearby(
       request.deviceId,
       { lat, lng },
       radiusMeters,
+      mood as Mood[] | undefined,
     );
-    return reply.send({ secrets });
+    return reply.send({ secrets, hiddenByFilter });
   },
 };
