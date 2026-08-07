@@ -29,6 +29,22 @@ const geography = customType<{ data: string; driverData: string }>({
   },
 });
 
+/**
+ * The one device row that is not a device: the owner of record for content
+ * whose real author erased themselves (`DELETE /devices/me`).
+ *
+ * A drop outlives its author on purpose — someone else already walked to it,
+ * and the app's one promise is that it happened *here* — so the erase re-points
+ * `drops.device_id` and `replies.device_id` here instead of deleting the rows or
+ * making the column nullable. Every erased author shares this single row, so
+ * their drops cannot be re-linked to each other across the map.
+ *
+ * Deliberately not a UUID: the X-Device-Id plugin only accepts UUIDs, so no
+ * request can ever authenticate as it. Inserted by 0009_device_erasure.sql, not
+ * at runtime — the erase transaction fails closed without it.
+ */
+export const DELETED_DEVICE_ID = '__deleted__';
+
 /** Anonymous identity. `id` is the X-Device-Id UUID the client generates. */
 export const devices = pgTable('devices', {
   id: text('id').primaryKey(),
@@ -207,7 +223,15 @@ export const replies = pgTable(
     index('replies_drop_idx').on(table.dropId),
     index('replies_device_idx').on(table.deviceId),
     // One reply per device per drop, enforced in the DB (see 0004_replies.sql).
-    uniqueIndex('replies_drop_device_uniq').on(table.dropId, table.deviceId),
+    //
+    // Partial since 0009: the erased-author sentinel is exempt, or a second
+    // erased device replying to the same drop would collide with the first and
+    // fail that device's wipe. reply.repo's ON CONFLICT clause repeats this
+    // predicate verbatim so Postgres can infer the index — change both or
+    // neither.
+    uniqueIndex('replies_drop_device_uniq')
+      .on(table.dropId, table.deviceId)
+      .where(sql`device_id <> ${sql.raw(`'${DELETED_DEVICE_ID}'`)}`),
   ],
 );
 
@@ -236,6 +260,9 @@ export const reports = pgTable(
   table => [
     index('reports_drop_idx').on(table.dropId),
     index('reports_reply_idx').on(table.replyId),
+    // The erase deletes this device's reports; without this the wipe scans the
+    // whole moderation log. See 0009_device_erasure.sql.
+    index('reports_device_idx').on(table.deviceId),
   ],
 );
 

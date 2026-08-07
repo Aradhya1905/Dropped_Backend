@@ -66,6 +66,13 @@ Anonymous identity. One row per device. `id` is the `X-Device-Id` UUID the clien
 | id          | text                       | **PK**. The client-generated device UUID |
 | created_at  | timestamptz                | NOT NULL, defaults to `now()` |
 
+**One row here is not a device.** `'__deleted__'` is the erased-author sentinel,
+inserted by `0009_device_erasure.sql`. It owns every drop and reply whose real
+author has erased themselves — see [Erasure](#erasure-delete-devicesme) below.
+Its id is deliberately **not** a UUID, so the `X-Device-Id` plugin (which
+requires one) can never authenticate as it. Do not delete it: the erase
+transaction depends on it, and every row it owns would be orphaned.
+
 ### `drops`
 The core content — a "drop" left at a geographic location.
 
@@ -191,6 +198,18 @@ Indexes: `replies_drop_idx` (drop_id), `replies_device_idx` (device_id),
 `replies_drop_device_uniq` (**unique** on drop_id + device_id — one reply per device
 per drop, enforced in the DB rather than only in the UI).
 
+`replies_drop_device_uniq` is **partial** since 0009: `WHERE device_id <> '__deleted__'`.
+Two erased devices can both have replied to the same drop, and after erasure both rows
+carry the sentinel id — a full index would reject the second and fail that person's
+wipe because of someone else's history. The rule exists to stop one device replying
+twice, and an erased device cannot reply at all.
+
+> ⚠️ `src/repositories/reply.repo.ts` repeats that predicate verbatim in its
+> `ON CONFLICT (drop_id, device_id) WHERE device_id <> '__deleted__'` clause. Postgres
+> matches a partial index only when the predicate matches, so the two must stay
+> character-identical — otherwise **every** reply insert fails with *"no unique or
+> exclusion constraint matching the ON CONFLICT specification"*.
+
 `drops.reply_count` is a denormalised count of `visible` replies, recomputed inside the
 same transaction as every insert / delete / status change, so `nearby` can show
 "3 voices here" without an N+1.
@@ -213,7 +232,64 @@ and `reports_target_chk` enforces the XOR — that keeps both FKs real (versus a
 | created_at | timestamptz | NOT NULL, default `now()` |
 
 Constraint: `reports_target_chk` — `(drop_id IS NOT NULL) <> (reply_id IS NOT NULL)`.
-Indexes: `reports_drop_idx` (drop_id), `reports_reply_idx` (reply_id).
+Indexes: `reports_drop_idx` (drop_id), `reports_reply_idx` (reply_id),
+`reports_device_idx` (device_id — added by 0009 so erasing a device doesn't scan the
+whole moderation log).
+
+---
+
+## Erasure (`DELETE /devices/me`)
+
+The panic wipe, and the data-deletion route Google Play and the App Store both require
+of a location + UGC app. Implemented in `deviceRepo.erase`, all inside **one
+transaction**.
+
+**Nothing cascades on `device_id`.** Every `device_id` foreign key in this schema is a
+plain `REFERENCES devices(id)` with no `ON DELETE` clause, so `DELETE FROM devices`
+only succeeds once every child row has been cleared or re-pointed. The order below is
+load-bearing:
+
+| # | Table | What happens |
+|---|-------|--------------|
+| 1 | `drops.heart_count` | `GREATEST(… - 1, 0)` for each drop this device hearted |
+| 2 | `hearts` | deleted |
+| 3 | `drops.reveal_count`, `drops.stood_here` | `GREATEST(… - 1, 0)` for each drop this device revealed |
+| 4 | `reveals` | deleted |
+| 5 | `saves` | deleted |
+| 6 | `device_steps` | deleted |
+| 7 | `reports` | deleted — see below |
+| 8 | `replies` | **anonymised** → `device_id = '__deleted__'` |
+| 9 | `drops` | **anonymised** → `device_id = '__deleted__'` |
+| 10 | `devices` | deleted |
+
+**Decisions, settled — don't re-litigate them per query:**
+
+- **Drops and replies are anonymised, never deleted.** Someone else already walked 50 m
+  to read them; they are part of a place now, not of a person, and the app's one promise
+  is that it happened *here*.
+- **The sentinel is shared, not one row per wipe.** A per-wipe tombstone would still say
+  "these fourteen confessions are by the same person" — a real deanonymisation vector
+  across a map of coordinates. Every erased author collapses into one indistinguishable
+  row.
+- **Counters are corrected before the rows go.** `heart_count`, `reveal_count` and
+  `stood_here` are denormalised onto drops *other people read*. Deleting the rows without
+  decrementing would permanently overstate how many people have stood somewhere.
+  `GREATEST(… - 1, 0)` because an already-drifted counter must not go negative and turn a
+  privacy operation into a 500.
+- **`reply_count` is untouched.** It counts *visible* replies and anonymising changes no
+  status — an anonymised reply is still a voice.
+- **Reports are deleted, and nothing is un-hidden.** The report is the reporter's personal
+  data and goes with them, but a moderation verdict already reached stands: letting an
+  erasure resurrect reported content would make "delete my account" a moderation-evasion
+  tool. This is also why reports are **not** anonymised to the sentinel —
+  `REPORT_HIDE_THRESHOLD` counts `DISTINCT device_id`, so collapsing many erased reporters
+  into one row would *lower* the count and have the same effect by accident.
+- **The client must not wipe locally until this returns 200.** A local wipe after a failed
+  server call leaves someone believing their confessions are gone when they are still on
+  the map — the worst outcome the feature can produce. The response is a receipt
+  (`{ deleted: {…}, anonymised: {…} }`) so the confirmation can name both halves honestly.
+
+Covered end to end by [tests/erase.spec.ts](tests/erase.spec.ts).
 
 ---
 
@@ -232,7 +308,8 @@ devices ──< drops ──< reveals
 
 All child tables of `drops` (reveals, saves, hearts, replies, reports) cascade-delete
 when a drop is deleted, and reports cascade from `replies` too. `device_id` foreign keys
-do **not** cascade.
+do **not** cascade — which is why [Erasure](#erasure-delete-devicesme) has to clear them
+by hand, in order.
 
 ---
 

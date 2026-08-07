@@ -1,8 +1,8 @@
 /**
  * device.controller — the anonymous identity summary (`GET /devices/me`), the
  * Trail stats (`GET /devices/me/stats`), the per-city breakdown behind them
- * (`GET /devices/me/cities`), and the Trail steps (`GET`/`POST
- * /devices/me/steps`).
+ * (`GET /devices/me/cities`), the Trail steps (`GET`/`POST
+ * /devices/me/steps`), and the panic wipe (`DELETE /devices/me`).
  */
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import type { z } from 'zod';
@@ -22,6 +22,10 @@ export const deviceController = {
 
   async cities(request: FastifyRequest, reply: FastifyReply) {
     return reply.send({ cities: await deviceService.cities(request.deviceId) });
+  },
+
+  async erase(request: FastifyRequest, reply: FastifyReply) {
+    return reply.send(await deviceService.erase(request.deviceId));
   },
 
   async steps(request: FastifyRequest, reply: FastifyReply) {

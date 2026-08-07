@@ -7,7 +7,29 @@
 import { eq, sql } from 'drizzle-orm';
 
 import { db, sqlClient } from '../db/client.js';
-import { devices, drops } from '../db/schema.js';
+import { DELETED_DEVICE_ID, devices, drops } from '../db/schema.js';
+
+/**
+ * What a wipe destroyed and what it left standing — the receipt for
+ * `DELETE /devices/me`.
+ *
+ * It exists because the confirmation dialog has to name both halves. "Erase
+ * everything" that quietly leaves eleven confessions on the map is the kind of
+ * broken promise this whole feature is meant to answer.
+ */
+export interface DeviceErasure {
+  deleted: {
+    reveals: number;
+    saves: number;
+    hearts: number;
+    reports: number;
+    stepDays: number;
+  };
+  anonymised: {
+    drops: number;
+    replies: number;
+  };
+}
 
 /** One row of the per-city breakdown. Timestamps still in postgres form. */
 export interface DeviceCityRow {
@@ -139,5 +161,112 @@ export const deviceRepo = {
       GROUP BY lower(d.city)
       ORDER BY "lastAt" DESC
     `;
+  },
+
+  /**
+   * Erase a device: everything that says who it was, in one transaction.
+   *
+   * **Nothing cascades.** Every `device_id` foreign key in the schema is a plain
+   * `REFERENCES devices(id)`, so the final `DELETE FROM devices` only succeeds
+   * once every child row has been cleared or re-pointed. The order below is
+   * therefore load-bearing, not stylistic, and it all runs inside one
+   * transaction: a half-erased device is worse than an un-erased one, because
+   * the user has already been told it worked.
+   *
+   * Three decisions worth reading before changing anything here:
+   *
+   * - **Counters are given back before the rows go.** `heart_count`,
+   *   `reveal_count` and `stood_here` are denormalised onto `drops`, and each is
+   *   bumped exactly once per `hearts` / `reveals` row (engagement.repo,
+   *   drop.repo `recordReveal`). Deleting the rows without decrementing would
+   *   permanently overstate how many people have stood somewhere — a number a
+   *   stranger reads off the map. `GREATEST(… - 1, 0)` because a counter that
+   *   has already drifted must not go negative and turn a privacy operation into
+   *   a 500.
+   *
+   * - **Drops and replies are anonymised, never deleted.** Someone else walked
+   *   50 m to read them; they are part of a place now, not of a person. They are
+   *   re-pointed at the shared {@link DELETED_DEVICE_ID} row — shared so that one
+   *   erased author's drops cannot be re-linked to each other.
+   *   `drops.reply_count` needs no recount: it counts *visible* replies and
+   *   nothing here changes a status.
+   *
+   * - **Reports are deleted, and nothing is un-hidden.** A report is the
+   *   reporter's personal data and goes with them. Moderation outcomes stay
+   *   where they are: `REPORT_HIDE_THRESHOLD` counts distinct reporters at
+   *   report time, and letting an erasure resurrect content someone else
+   *   reported would make "delete my account" a moderation-evasion tool. (This
+   *   is also why reports are not anonymised to the sentinel — that would
+   *   collapse many erased reporters into one distinct device and *lower* the
+   *   count, which has the same effect by accident.)
+   */
+  async erase(deviceId: string): Promise<DeviceErasure> {
+    return sqlClient.begin(async tx => {
+      // 1. Hand back one heart on every drop this device hearted, then let the
+      //    hearts go. `hearts` is keyed (drop_id, device_id), so the UPDATE …
+      //    FROM touches each drop exactly once.
+      await tx`
+        UPDATE drops d
+        SET heart_count = GREATEST(d.heart_count - 1, 0)
+        FROM hearts h
+        WHERE h.drop_id = d.id AND h.device_id = ${deviceId}
+      `;
+      const hearts = await tx`
+        DELETE FROM hearts WHERE device_id = ${deviceId} RETURNING drop_id
+      `;
+
+      // 2. Same for reveals, which carry two counters rather than one.
+      await tx`
+        UPDATE drops d
+        SET reveal_count = GREATEST(d.reveal_count - 1, 0),
+            stood_here   = GREATEST(d.stood_here - 1, 0)
+        FROM reveals r
+        WHERE r.drop_id = d.id AND r.device_id = ${deviceId}
+      `;
+      const reveals = await tx`
+        DELETE FROM reveals WHERE device_id = ${deviceId} RETURNING drop_id
+      `;
+
+      // 3. Saves and step days back no counter — they are purely this device's.
+      const saves = await tx`
+        DELETE FROM saves WHERE device_id = ${deviceId} RETURNING drop_id
+      `;
+      const stepDays = await tx`
+        DELETE FROM device_steps WHERE device_id = ${deviceId} RETURNING day
+      `;
+
+      // 4. Reports. See the note above: the rows go, the verdicts stand.
+      const reports = await tx`
+        DELETE FROM reports WHERE device_id = ${deviceId} RETURNING id
+      `;
+
+      // 5. Anonymise what the world has already read. Replies first, so that if
+      //    the partial unique index ever rejects one the drops are untouched and
+      //    the whole transaction rolls back cleanly.
+      const keptReplies = await tx`
+        UPDATE replies SET device_id = ${DELETED_DEVICE_ID}
+        WHERE device_id = ${deviceId}
+        RETURNING id
+      `;
+      const keptDrops = await tx`
+        UPDATE drops SET device_id = ${DELETED_DEVICE_ID}
+        WHERE device_id = ${deviceId}
+        RETURNING id
+      `;
+
+      // 6. Only now can the identity itself go.
+      await tx`DELETE FROM devices WHERE id = ${deviceId}`;
+
+      return {
+        deleted: {
+          reveals: reveals.length,
+          saves: saves.length,
+          hearts: hearts.length,
+          reports: reports.length,
+          stepDays: stepDays.length,
+        },
+        anonymised: { drops: keptDrops.length, replies: keptReplies.length },
+      };
+    });
   },
 };

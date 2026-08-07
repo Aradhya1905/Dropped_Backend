@@ -5,8 +5,11 @@
  * including the remaining daily drop quota.
  */
 import { env } from '../config/env.js';
+import { DELETED_DEVICE_ID } from '../db/schema.js';
 import type { DeviceCity, DeviceStats } from '../domain/clientTypes.js';
+import type { DeviceErasure } from '../repositories/device.repo.js';
 import { deviceRepo } from '../repositories/device.repo.js';
+import { forbidden } from '../plugins/errorHandler.js';
 
 export interface DeviceSummary {
   deviceId: string;
@@ -91,5 +94,29 @@ export const deviceService = {
       firstAt: new Date(r.firstAt).getTime(),
       lastAt: new Date(r.lastAt).getTime(),
     }));
+  },
+
+  /**
+   * Erase this device — the server half of the panic wipe.
+   *
+   * There is nothing to decide here: the ordering, the counter corrections and
+   * the anonymise-don't-delete rule are all one transaction in the repo, because
+   * splitting them across layers is how a wipe ends up half-done. What this
+   * layer owns is the receipt the client needs in order to tell the truth in its
+   * confirmation, and the one guard below.
+   *
+   * The client must not wipe locally until this resolves. A local wipe after a
+   * failed server call leaves someone believing their confessions are gone when
+   * they are still on the map — the worst outcome this feature can produce.
+   */
+  async erase(deviceId: string): Promise<DeviceErasure> {
+    // Unreachable through HTTP — the X-Device-Id plugin only accepts UUIDs and
+    // the sentinel deliberately is not one. Kept because the failure it prevents
+    // is unrecoverable: erasing the sentinel would orphan every drop whose
+    // author has already left.
+    if (deviceId === DELETED_DEVICE_ID) {
+      throw forbidden('That identity cannot be erased.');
+    }
+    return deviceRepo.erase(deviceId);
   },
 };

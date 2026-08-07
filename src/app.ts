@@ -28,6 +28,33 @@ export async function buildApp(): Promise<FastifyInstance> {
 
   registerErrorHandler(app);
 
+  // An empty body with `Content-Type: application/json` is not a parse error.
+  //
+  // Fastify's default parser rejects it outright with 400 before any route
+  // schema runs, which turns a client that sets a default JSON header on every
+  // request into a client that cannot call `DELETE /devices/me` — the panic
+  // wipe, the one request that must not fail for a clerical reason. Handing the
+  // route `undefined` instead lets its own schema decide: bodyless routes
+  // proceed, and a route that genuinely needs a body still answers 400, just
+  // with a message naming the missing field rather than the transport.
+  app.addContentTypeParser(
+    'application/json',
+    { parseAs: 'string' },
+    (_request, body, done) => {
+      const raw = typeof body === 'string' ? body : body.toString('utf8');
+      if (raw.trim() === '') return done(null, undefined);
+      try {
+        done(null, JSON.parse(raw));
+      } catch {
+        const err = new Error('Body is not valid JSON') as Error & {
+          statusCode?: number;
+        };
+        err.statusCode = 400;
+        done(err, undefined);
+      }
+    },
+  );
+
   // OpenAPI doc, generated from the Zod route schemas (jsonSchemaTransform).
   // Registered before routes so it can collect every schema. The X-Device-Id
   // header is declared as a security scheme so it can be set once in the UI.

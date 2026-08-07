@@ -46,6 +46,14 @@ export const replyRepo = {
    * Insert a reply and refresh the drop's counter atomically. Returns undefined
    * if the unique index rejected it (this device already replied here) — the
    * caller turns that into a duplicate verdict rather than a 500.
+   *
+   * The `WHERE` on the conflict target is not a filter — it is how Postgres
+   * identifies which index to arbitrate on, and `replies_drop_device_uniq` is
+   * partial since 0009_device_erasure.sql (the erased-author sentinel is exempt,
+   * so two erased devices can both have replied to the same drop). The predicate
+   * must stay character-identical to the index's or the INSERT fails outright
+   * with "no unique or exclusion constraint matching the ON CONFLICT
+   * specification". Inlined rather than parameterised for the same reason.
    */
   async create(input: {
     dropId: string;
@@ -57,7 +65,8 @@ export const replyRepo = {
       const rows = await tx<ReplyRow[]>`
         INSERT INTO replies (drop_id, device_id, body, status)
         VALUES (${input.dropId}, ${input.deviceId}, ${input.body}, ${input.status})
-        ON CONFLICT (drop_id, device_id) DO NOTHING
+        ON CONFLICT (drop_id, device_id) WHERE device_id <> '__deleted__'
+        DO NOTHING
         RETURNING
           id, drop_id AS "dropId", device_id AS "deviceId", body, status,
           created_at AS "createdAt"

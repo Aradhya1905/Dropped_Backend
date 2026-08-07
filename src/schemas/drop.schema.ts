@@ -196,6 +196,30 @@ export const deviceCitiesResponse = z.object({
   ),
 });
 
+/**
+ * `DELETE /devices/me` — the receipt for the panic wipe.
+ *
+ * Split into what is gone and what is still out there on purpose. The client's
+ * confirmation has to name both halves before the user taps, and a screen that
+ * says "everything erased" while eleven drops stay readable is exactly the
+ * broken promise this feature exists to answer. Counts only — naming *which*
+ * drops survived would hand back the linkage the wipe just severed.
+ */
+export const deviceEraseResponse = z.object({
+  deleted: z.object({
+    reveals: z.number(),
+    saves: z.number(),
+    hearts: z.number(),
+    reports: z.number(),
+    /** Days of step history, not steps. */
+    stepDays: z.number(),
+  }),
+  anonymised: z.object({
+    drops: z.number(),
+    replies: z.number(),
+  }),
+});
+
 export const deviceStatsResponse = z.object({
   droppedTotal: z.number(),
   droppedThisMonth: z.number(),
