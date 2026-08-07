@@ -4,14 +4,14 @@
  * Trail entries always show the body (the device has earned/owns them), so they
  * map to the unsealed view.
  */
-import type { ApiSecret } from '../domain/clientTypes.js';
+import type { ApiTrailSecret } from '../domain/clientTypes.js';
 import { dropRepo } from '../repositories/drop.repo.js';
-import { toUnsealedSecret } from './mappers.js';
+import { toTrailSecret } from './mappers.js';
 
 export type TrailKind = 'found' | 'saved' | 'dropped';
 
 export interface TrailPage {
-  secrets: ApiSecret[];
+  secrets: ApiTrailSecret[];
   total: number;
 }
 
@@ -31,6 +31,6 @@ export const trailService = {
       offset,
       city,
     );
-    return { secrets: rows.map(toUnsealedSecret), total };
+    return { secrets: rows.map(toTrailSecret), total };
   },
 };

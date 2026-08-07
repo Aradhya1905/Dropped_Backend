@@ -8,6 +8,7 @@ import { env } from '../config/env.js';
 import type {
   ApiReply,
   ApiSecret,
+  ApiTrailSecret,
   DropPreview,
   Mood,
   Whisper,
@@ -18,6 +19,7 @@ import type {
   DropPreviewRow,
   DropRow,
   DropRowForDevice,
+  TrailRow,
 } from '../repositories/drop.repo.js';
 import type { ReplyRow } from '../repositories/reply.repo.js';
 
@@ -134,6 +136,19 @@ export function toNearbySecret(row: DropRowForDevice): ApiSecret {
   return row.revealed
     ? toUnsealedSecret(row)
     : toSealedSecret(row, whisperFor(row));
+}
+
+/**
+ * Trail view: unsealed, plus **when this device stood here**.
+ *
+ * `stoodAt` lives on the trail and nowhere else, because it is only ever the
+ * requesting device's own history — its reveal, its save, or its own drop. It
+ * exists so the city constellation can draw its line in walk order; ordering by
+ * the drops' creation dates would draw the order the *secrets* were written,
+ * which is somebody else's story.
+ */
+export function toTrailSecret(row: TrailRow): ApiTrailSecret {
+  return { ...toUnsealedSecret(row), stoodAt: toEpochMs(row.stoodAt) };
 }
 
 /**

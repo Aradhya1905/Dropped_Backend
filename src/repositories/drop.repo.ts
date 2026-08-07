@@ -75,6 +75,18 @@ export interface RevealGate {
   revealCondition: RevealCondition | null;
 }
 
+/**
+ * A trail row: the drop, this device's flags, and **when this device came to
+ * stand here** — its reveal, its save, or (for its own drops) the drop itself.
+ *
+ * Only the trail carries it. It is what lets the city constellation draw its
+ * line in walk order instead of in the order the secrets happened to be
+ * written, which is a different and much less interesting picture.
+ */
+export interface TrailRow extends DropRowForDevice {
+  stoodAt: Date | string;
+}
+
 /** DropRow plus the requesting device's relationship to it. */
 export interface DropRowForDevice extends DropRow {
   saved: boolean;
@@ -430,7 +442,7 @@ export const dropRepo = {
     limit: number,
     offset: number,
     city?: string,
-  ): Promise<{ rows: DropRowForDevice[]; total: number }> {
+  ): Promise<{ rows: TrailRow[]; total: number }> {
     const joinFilter =
       kind === 'found'
         ? sqlClient`JOIN reveals j ON j.drop_id = d.id AND j.device_id = ${deviceId}`
@@ -447,12 +459,14 @@ export const dropRepo = {
         ? sqlClient`WHERE d.device_id = ${deviceId} ${cityFilter}`
         : sqlClient`WHERE d.status = 'visible' ${cityFilter}`;
 
-    // found/saved order by interaction time; dropped by creation time.
+    // found/saved order by interaction time; dropped by creation time. The
+    // same column answers "when did this device stand here", so it is selected
+    // as well as ordered by.
     const orderCol =
       kind === 'dropped' ? sqlClient`d.created_at` : sqlClient`j.created_at`;
 
-    const rows = await sqlClient<DropRowForDevice[]>`
-      SELECT ${dropCols}, ${deviceFlagCols}
+    const rows = await sqlClient<TrailRow[]>`
+      SELECT ${dropCols}, ${deviceFlagCols}, ${orderCol} AS "stoodAt"
       FROM drops d
       ${joinFilter}
       ${deviceFlagJoins(deviceId)}

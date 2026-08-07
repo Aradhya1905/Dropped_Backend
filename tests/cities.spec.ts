@@ -100,7 +100,10 @@ const cities = async (deviceId: string): Promise<CityRow[]> => {
 const trailFound = async (
   deviceId: string,
   city?: string,
-): Promise<{ secrets: { id: string; drop: { city?: string } }[]; total: number }> => {
+): Promise<{
+  secrets: { id: string; stoodAt: number; drop: { city?: string } }[];
+  total: number;
+}> => {
   const query = city === undefined ? '' : `?city=${encodeURIComponent(city)}`;
   const res = await app.inject({
     method: 'GET',
@@ -237,6 +240,22 @@ describe('city constellation data', () => {
       const { secrets } = await trailFound(WALKER);
       const found = secrets.find(s => s.id === noCity)!;
       expect(found.drop.city).toBeUndefined();
+    });
+
+    it('says when this device stood there, not when the drop was written', async () => {
+      // The constellation's line is walk order. `stoodAt` on a found row is the
+      // reveal — here, one backdated 100 days while the drop itself was not…
+      const { secrets } = await trailFound(WALKER);
+      const stale = secrets.find(s => s.id === lakeC)!;
+      const fresh = secrets.find(s => s.id === riverA)!;
+      expect(stale.stoodAt).toBeLessThan(Date.now() - 86_400_000);
+      expect(fresh.stoodAt).toBeGreaterThan(stale.stoodAt);
+    });
+
+    it('orders the list by it', async () => {
+      const { secrets } = await trailFound(WALKER);
+      const stoodAts = secrets.map(s => s.stoodAt);
+      expect([...stoodAts].sort((a, b) => b - a)).toEqual(stoodAts);
     });
   });
 

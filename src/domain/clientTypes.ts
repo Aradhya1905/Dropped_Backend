@@ -158,6 +158,20 @@ export interface ApiSecret extends Omit<Secret, 'body'> {
 }
 
 /**
+ * A secret on a trail list. Everything an `ApiSecret` has, plus when the
+ * requesting device came to stand there — its reveal, its save, or, for its own
+ * drops, the drop itself.
+ *
+ * Trail-only, and only ever about the requesting device: it is that device's
+ * own history, which is why it can carry a timestamp no other response does.
+ * The city constellation draws its line in this order.
+ */
+export interface ApiTrailSecret extends ApiSecret {
+  /** ms epoch. */
+  stoodAt: number;
+}
+
+/**
  * What a shared link is allowed to reveal about a spot before anyone walks
  * there — `GET /drops/:id/preview`.
  *

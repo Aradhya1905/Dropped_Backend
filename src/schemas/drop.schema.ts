@@ -145,8 +145,17 @@ export const reportBody = z.object({
 });
 export const reportResponse = z.object({ reported: z.literal(true) });
 
+/**
+ * A trail entry: an ordinary secret plus `stoodAt` — when *this* device came to
+ * stand there (its reveal, its save, or its own drop). It exists only here,
+ * because only here is every row the requesting device's own history.
+ */
+export const trailSecretSchema = apiSecretSchema.extend({
+  stoodAt: z.number(),
+});
+
 export const trailResponse = z.object({
-  secrets: z.array(apiSecretSchema),
+  secrets: z.array(trailSecretSchema),
   total: z.number(),
 });
 
