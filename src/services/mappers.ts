@@ -37,6 +37,10 @@ function toDrop(row: DropRow) {
     id: row.id,
     coordinate: { lat: Number(row.lat), lng: Number(row.lng) },
     ...(row.placeLabel ? { placeLabel: row.placeLabel } : {}),
+    // Same absent-stays-absent treatment as `placeLabel`: a drop whose author
+    // never resolved a city has no city, rather than an empty string that the
+    // client would then have to special-case when grouping by it.
+    ...(row.city ? { city: row.city } : {}),
     createdAt: toEpochMs(row.createdAt),
   };
 }

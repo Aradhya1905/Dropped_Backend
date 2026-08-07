@@ -418,12 +418,18 @@ export const dropRepo = {
    * Expired drops are **kept** here: the author must still see their own
    * history (rendered faded, not hidden), and a saved drop stays readable to
    * whoever saved it.
+   *
+   * `city` narrows to one city, matched case-insensitively — the constellation
+   * pages through a single city rather than pulling a whole trail and filtering
+   * on the device. It is applied to the count as well as the page, so "showing
+   * 20 of 34" means 34 *in that city*.
    */
   async trail(
     deviceId: string,
     kind: 'found' | 'saved' | 'dropped',
     limit: number,
     offset: number,
+    city?: string,
   ): Promise<{ rows: DropRowForDevice[]; total: number }> {
     const joinFilter =
       kind === 'found'
@@ -432,10 +438,14 @@ export const dropRepo = {
           ? sqlClient`JOIN saves j ON j.drop_id = d.id AND j.device_id = ${deviceId}`
           : sqlClient``;
 
+    const cityFilter = city
+      ? sqlClient`AND lower(d.city) = lower(${city})`
+      : sqlClient``;
+
     const whereFilter =
       kind === 'dropped'
-        ? sqlClient`WHERE d.device_id = ${deviceId}`
-        : sqlClient`WHERE d.status = 'visible'`;
+        ? sqlClient`WHERE d.device_id = ${deviceId} ${cityFilter}`
+        : sqlClient`WHERE d.status = 'visible' ${cityFilter}`;
 
     // found/saved order by interaction time; dropped by creation time.
     const orderCol =

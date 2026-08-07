@@ -7,6 +7,7 @@ import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { deviceController } from '../controllers/device.controller.js';
 import {
   addStepsBody,
+  deviceCitiesResponse,
   deviceResponse,
   deviceStatsResponse,
   stepsResponse,
@@ -25,6 +26,15 @@ export async function devicesRoutes(app: FastifyInstance): Promise<void> {
     '/devices/me/stats',
     { schema: { response: { 200: deviceStatsResponse } } },
     deviceController.stats,
+  );
+
+  // The per-city breakdown the constellation is drawn from. Strictly this
+  // device's own history — like every other /devices/me route, there is nothing
+  // here it did not already do itself.
+  r.get(
+    '/devices/me/cities',
+    { schema: { response: { 200: deviceCitiesResponse } } },
+    deviceController.cities,
   );
 
   r.get(

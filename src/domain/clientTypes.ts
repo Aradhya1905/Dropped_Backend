@@ -25,8 +25,28 @@ export interface Drop {
   coordinate: Coordinate;
   /** Optional human label, e.g. "Blue Tokai, Indiranagar". */
   placeLabel?: string;
+  /** The city it was left in, e.g. "Bengaluru". Absent when never resolved. */
+  city?: string;
   /** ms epoch. */
   createdAt: number;
+}
+
+/**
+ * One city in a device's history — `GET /devices/me/cities`.
+ *
+ * The per-city breakdown behind `DeviceStats.citiesVisited`, which is only a
+ * number. A number is not a keepsake; this is what the constellation is drawn
+ * from, one per city.
+ */
+export interface DeviceCity {
+  city: string;
+  /** Drops this device revealed in that city (visible ones only). */
+  foundCount: number;
+  /** Drops this device left there. Its own drops count even if taken down. */
+  droppedCount: number;
+  /** ms epoch of the first and most recent of those events. */
+  firstAt: number;
+  lastAt: number;
 }
 
 /** The anonymous confession itself, tied to one drop. */

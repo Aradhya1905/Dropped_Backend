@@ -5,7 +5,7 @@
  * including the remaining daily drop quota.
  */
 import { env } from '../config/env.js';
-import type { DeviceStats } from '../domain/clientTypes.js';
+import type { DeviceCity, DeviceStats } from '../domain/clientTypes.js';
 import { deviceRepo } from '../repositories/device.repo.js';
 
 export interface DeviceSummary {
@@ -72,5 +72,24 @@ export const deviceService = {
       ...counts,
       streakDays: computeStreak(activityDates),
     };
+  },
+
+  /**
+   * The per-city breakdown behind `citiesVisited` — one entry per city this
+   * device has found or left something in, newest activity first.
+   *
+   * Timestamps are coerced here rather than in SQL for the same reason every
+   * other response does it in the mapper layer: postgres.js hands back strings,
+   * and the wire contract is ms epoch everywhere.
+   */
+  async cities(deviceId: string): Promise<DeviceCity[]> {
+    const rows = await deviceRepo.cities(deviceId);
+    return rows.map(r => ({
+      city: r.city,
+      foundCount: r.foundCount,
+      droppedCount: r.droppedCount,
+      firstAt: new Date(r.firstAt).getTime(),
+      lastAt: new Date(r.lastAt).getTime(),
+    }));
   },
 };

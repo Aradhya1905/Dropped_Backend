@@ -149,12 +149,42 @@ export const trailResponse = z.object({
   secrets: z.array(apiSecretSchema),
   total: z.number(),
 });
-export const trailQuery = paginationSchema;
+
+/**
+ * Pagination, plus an optional single-city narrowing.
+ *
+ * The city constellation is drawn one city at a time, so it pages through
+ * `?city=Bengaluru` rather than pulling a whole trail and filtering on the
+ * device. Matched case-insensitively — the composer sends whatever the geocoder
+ * returned, and "bengaluru" is not a different place.
+ */
+export const trailQuery = paginationSchema.extend({
+  city: z.string().trim().min(1).max(120).optional(),
+});
 
 export const deviceResponse = z.object({
   deviceId: z.string(),
   createdAt: z.number(),
   dropsQuotaRemaining: z.number(),
+});
+
+/**
+ * `GET /devices/me/cities` — the per-city breakdown the constellation is drawn
+ * from. Counts and dates only: **no coordinates and no bodies**, because this
+ * is the index, not the map. The points come from the trail, which is already
+ * gated on this device having stood there.
+ */
+export const deviceCitiesResponse = z.object({
+  cities: z.array(
+    z.object({
+      city: z.string(),
+      foundCount: z.number(),
+      droppedCount: z.number(),
+      /** ms epoch of the first and most recent thing you did in that city. */
+      firstAt: z.number(),
+      lastAt: z.number(),
+    }),
+  ),
 });
 
 export const deviceStatsResponse = z.object({

@@ -9,6 +9,15 @@ import { eq, sql } from 'drizzle-orm';
 import { db, sqlClient } from '../db/client.js';
 import { devices, drops } from '../db/schema.js';
 
+/** One row of the per-city breakdown. Timestamps still in postgres form. */
+export interface DeviceCityRow {
+  city: string;
+  foundCount: number;
+  droppedCount: number;
+  firstAt: Date | string;
+  lastAt: Date | string;
+}
+
 /** Raw aggregate counts + activity dates backing the Trail stats. */
 export interface DeviceStatsRow {
   droppedTotal: number;
@@ -90,5 +99,45 @@ export const deviceRepo = {
     `;
 
     return { ...counts, activityDates: dateRows.map(r => r.d) };
+  },
+
+  /**
+   * Per-city breakdown of everything this device found or left, newest activity
+   * first — the rows behind `citiesVisited`, which on its own is just a number.
+   *
+   * Three things worth reading twice:
+   *
+   * - **Grouped by `lower(city)`, labelled with `min(city)`.** The composer
+   *   sends whatever the geocoder returned, so "Bengaluru" and "bengaluru" are
+   *   the same city and must not be two constellations. `citiesVisited` already
+   *   counts distinct `lower(city)`; this agrees with it by construction.
+   * - **`status` is asserted for reveals but not for a device's own drops**,
+   *   exactly as `trail()` does. A drop moderation took down stops being part
+   *   of anyone else's history; it stays part of yours.
+   * - **No expiry predicate**, again as in `trail()`: a faded drop you stood
+   *   inside is still somewhere you have been.
+   */
+  async cities(deviceId: string): Promise<DeviceCityRow[]> {
+    return sqlClient<DeviceCityRow[]>`
+      WITH ev AS (
+        SELECT drop_id, 'found' AS kind, created_at AS at
+        FROM reveals WHERE device_id = ${deviceId}
+        UNION ALL
+        SELECT id, 'dropped' AS kind, created_at AS at
+        FROM drops   WHERE device_id = ${deviceId}
+      )
+      SELECT
+        min(d.city)                                        AS city,
+        count(*) FILTER (WHERE ev.kind = 'found')::int     AS "foundCount",
+        count(*) FILTER (WHERE ev.kind = 'dropped')::int   AS "droppedCount",
+        min(ev.at)                                         AS "firstAt",
+        max(ev.at)                                         AS "lastAt"
+      FROM ev
+      JOIN drops d ON d.id = ev.drop_id
+      WHERE d.city IS NOT NULL
+        AND (ev.kind = 'dropped' OR d.status = 'visible')
+      GROUP BY lower(d.city)
+      ORDER BY "lastAt" DESC
+    `;
   },
 };

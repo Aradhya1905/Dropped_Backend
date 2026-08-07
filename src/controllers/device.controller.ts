@@ -1,6 +1,7 @@
 /**
  * device.controller — the anonymous identity summary (`GET /devices/me`), the
- * Trail stats (`GET /devices/me/stats`), and the Trail steps (`GET`/`POST
+ * Trail stats (`GET /devices/me/stats`), the per-city breakdown behind them
+ * (`GET /devices/me/cities`), and the Trail steps (`GET`/`POST
  * /devices/me/steps`).
  */
 import type { FastifyReply, FastifyRequest } from 'fastify';
@@ -17,6 +18,10 @@ export const deviceController = {
 
   async stats(request: FastifyRequest, reply: FastifyReply) {
     return reply.send(await deviceService.stats(request.deviceId));
+  },
+
+  async cities(request: FastifyRequest, reply: FastifyReply) {
+    return reply.send({ cities: await deviceService.cities(request.deviceId) });
   },
 
   async steps(request: FastifyRequest, reply: FastifyReply) {

@@ -16,13 +16,21 @@ export interface TrailPage {
 }
 
 export const trailService = {
+  /** `city` narrows the list to one city (case-insensitive); absent = all. */
   async list(
     deviceId: string,
     kind: TrailKind,
     limit: number,
     offset: number,
+    city?: string,
   ): Promise<TrailPage> {
-    const { rows, total } = await dropRepo.trail(deviceId, kind, limit, offset);
+    const { rows, total } = await dropRepo.trail(
+      deviceId,
+      kind,
+      limit,
+      offset,
+      city,
+    );
     return { secrets: rows.map(toUnsealedSecret), total };
   },
 };

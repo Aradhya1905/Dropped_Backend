@@ -10,8 +10,10 @@ import type { trailQuery } from '../schemas/drop.schema.js';
 type TrailReq = FastifyRequest<{ Querystring: z.infer<typeof trailQuery> }>;
 
 const handler = (kind: TrailKind) => async (req: TrailReq, reply: FastifyReply) => {
-  const { limit, offset } = req.query;
-  return reply.send(await trailService.list(req.deviceId, kind, limit, offset));
+  const { limit, offset, city } = req.query;
+  return reply.send(
+    await trailService.list(req.deviceId, kind, limit, offset, city),
+  );
 };
 
 export const trailController = {

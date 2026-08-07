@@ -43,6 +43,15 @@ const dropSchema = z.object({
   id: z.string(),
   coordinate: coordinateSchema,
   placeLabel: z.string().optional(),
+  /**
+   * The city the drop was left in, as the composer resolved it. Absent when the
+   * author's device never named one — every drop predating the column, and any
+   * drop made without reverse geocoding.
+   *
+   * It is coarser than `placeLabel` and therefore *safer*, not more sensitive:
+   * it is what lets the client group a trail into one constellation per city.
+   */
+  city: z.string().optional(),
   createdAt: z.number(),
 });
 
