@@ -4,8 +4,18 @@
  * One place owns the wire shape, so field names/casing/ms-epoch are consistent
  * and any drift from the copied client types is a compile error.
  */
-import type { ApiReply, ApiSecret, Mood } from '../domain/clientTypes.js';
-import type { DropRow, DropRowForDevice } from '../repositories/drop.repo.js';
+import type {
+  ApiReply,
+  ApiSecret,
+  DropPreview,
+  Mood,
+} from '../domain/clientTypes.js';
+import { coarsen } from '../domain/coarsen.js';
+import type {
+  DropPreviewRow,
+  DropRow,
+  DropRowForDevice,
+} from '../repositories/drop.repo.js';
 import type { ReplyRow } from '../repositories/reply.repo.js';
 
 /**
@@ -39,6 +49,7 @@ const baseSecret = (row: DropRowForDevice) => ({
   replyCount: Number(row.replyCount ?? 0),
   saved: row.saved,
   hearted: row.hearted,
+  shareable: row.shareable,
   // Omitted entirely when the drop is forever, so the client can treat
   // "absent" as "no countdown" without a sentinel value.
   ...(row.expiresAt ? { expiresAt: toEpochMs(row.expiresAt) } : {}),
@@ -73,6 +84,24 @@ export function toUnsealedSecret(row: DropRowForDevice): ApiSecret {
  */
 export function toNearbySecret(row: DropRowForDevice): ApiSecret {
   return row.revealed ? toUnsealedSecret(row) : toSealedSecret(row);
+}
+
+/**
+ * Public view of a spot, for a shared link. The row it takes carries no body at
+ * all (see `DropPreviewRow`), and the coordinate is coarsened **here**, on the
+ * server — the client is never handed the exact point and asked to round it.
+ */
+export function toDropPreview(row: DropPreviewRow): DropPreview {
+  return {
+    id: row.id,
+    coordinate: coarsen({ lat: Number(row.lat), lng: Number(row.lng) }),
+    ...(row.placeLabel ? { placeLabel: row.placeLabel } : {}),
+    ...(row.city ? { city: row.city } : {}),
+    mood: row.mood as Mood,
+    createdAt: toEpochMs(row.createdAt),
+    revealCount: Number(row.revealCount),
+    ...(row.expiresAt ? { expiresAt: toEpochMs(row.expiresAt) } : {}),
+  };
 }
 
 /**

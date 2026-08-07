@@ -29,7 +29,28 @@ export interface DropRow {
   replyCount: number;
   /** When it stops being findable. `null` = forever. */
   expiresAt: Date | string | null;
+  /** Whether a share link may resolve to it. Never gates walking to it. */
+  shareable: boolean;
   /** postgres.js returns timestamps as strings; mappers coerce to ms epoch. */
+  createdAt: Date | string;
+}
+
+/**
+ * The columns a shared link is allowed to see. **Deliberately has no `body`** —
+ * the preview endpoint answers without a reveal on record, so the safest shape
+ * is one where the text never leaves Postgres in the first place. The response
+ * schema is a second gate, not the only one.
+ */
+export interface DropPreviewRow {
+  id: string;
+  mood: string;
+  placeLabel: string | null;
+  city: string | null;
+  /** The stored, full-precision point. Coarsened by the mapper before it ships. */
+  lat: number;
+  lng: number;
+  revealCount: number;
+  expiresAt: Date | string | null;
   createdAt: Date | string;
 }
 
@@ -52,6 +73,8 @@ interface CreateDropInput {
   status: DropStatus;
   /** Server-computed (see domain/expiry). `null` = forever. */
   expiresAt: Date | null;
+  /** Author's choice: may a share link point here? Defaults to true. */
+  shareable: boolean;
 }
 
 /**
@@ -84,6 +107,7 @@ const dropCols = sqlClient`
   d.heart_count      AS "heartCount",
   d.reply_count      AS "replyCount",
   d.expires_at       AS "expiresAt",
+  d.shareable,
   d.created_at       AS "createdAt"
 `;
 
@@ -106,7 +130,7 @@ export const dropRepo = {
     const lat = snap(input.coordinate.lat);
     const lng = snap(input.coordinate.lng);
     const rows = await sqlClient<DropRow[]>`
-      INSERT INTO drops (device_id, body, mood, place_label, city, geog, status, expires_at)
+      INSERT INTO drops (device_id, body, mood, place_label, city, geog, status, expires_at, shareable)
       VALUES (
         ${input.deviceId},
         ${input.body},
@@ -117,7 +141,8 @@ export const dropRepo = {
         ${input.status},
         -- ISO string + explicit cast: postgres.js cannot infer a parameter
         -- type for a bare Date here and fails to bind it (ERR_INVALID_ARG_TYPE).
-        ${input.expiresAt ? input.expiresAt.toISOString() : null}::timestamptz
+        ${input.expiresAt ? input.expiresAt.toISOString() : null}::timestamptz,
+        ${input.shareable}
       )
       RETURNING
         id, device_id AS "deviceId", body, mood, place_label AS "placeLabel",
@@ -125,7 +150,7 @@ export const dropRepo = {
         ST_Y(geog::geometry) AS lat, ST_X(geog::geometry) AS lng,
         status, reveal_count AS "revealCount", stood_here AS "stoodHere",
         heart_count AS "heartCount", reply_count AS "replyCount",
-        expires_at AS "expiresAt",
+        expires_at AS "expiresAt", shareable,
         created_at AS "createdAt"
     `;
     return rows[0]!;
@@ -178,6 +203,43 @@ export const dropRepo = {
       FROM drops d
       ${deviceFlagJoins(deviceId)}
       WHERE d.id = ${id}
+      LIMIT 1
+    `;
+    return rows[0];
+  },
+
+  /**
+   * Public metadata for one drop, for the shared-link preview. No device, no
+   * body, no flags.
+   *
+   * The expiry and status predicates are both here and both matter: this is the
+   * only read in the repo that answers a caller who has done nothing but hold
+   * an id. A `pending` drop under moderation review, one that has faded, and
+   * one the author opted out of sharing must all be indistinguishable from one
+   * that never existed — hence a single `undefined` for every case, which the
+   * service turns into a 404 rather than a 403. A 403 would confirm the drop
+   * is real.
+   *
+   * `shareable` gates the *link*, not the drop: an opted-out drop is still
+   * found by walking past it, which is the premise of the app.
+   */
+  async findPublic(id: string): Promise<DropPreviewRow | undefined> {
+    const rows = await sqlClient<DropPreviewRow[]>`
+      SELECT
+        d.id,
+        d.mood,
+        d.place_label AS "placeLabel",
+        d.city,
+        ST_Y(d.geog::geometry) AS lat,
+        ST_X(d.geog::geometry) AS lng,
+        d.reveal_count AS "revealCount",
+        d.expires_at   AS "expiresAt",
+        d.created_at   AS "createdAt"
+      FROM drops d
+      WHERE d.id = ${id}
+        AND d.status = 'visible'
+        AND d.shareable
+        AND ${notExpired}
       LIMIT 1
     `;
     return rows[0];

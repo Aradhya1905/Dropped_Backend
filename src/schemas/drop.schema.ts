@@ -27,6 +27,15 @@ export const createDropBody = z.object({
    * own clock, because a client-supplied expiry is a client-supplied clock.
    */
   expiresInDays: z.union([z.literal(7), z.literal(30)]).optional(),
+  /**
+   * May a share link point at this drop? Absent = yes.
+   *
+   * An opt-out on the *link*, not on the drop: a confession meant for
+   * strangers walking past is a different thing from one forwarded into a
+   * group chat. False makes `GET /drops/:id/preview` 404; the drop is still
+   * found by walking to it.
+   */
+  shareable: z.boolean().optional(),
 });
 
 export const nearbyQuery = z.object({
@@ -36,6 +45,30 @@ export const nearbyQuery = z.object({
 });
 
 export const nearbyResponse = z.object({ secrets: z.array(apiSecretSchema) });
+
+/**
+ * Public metadata for a shared spot — what `GET /drops/:id/preview` returns to
+ * someone who has a link but has not walked anywhere.
+ *
+ * **No `body`, and never the stored coordinate.** This schema is the
+ * enforcement point, not a description of one: `fastify-type-provider-zod`
+ * serializes strictly, so a field absent here cannot reach the wire even if the
+ * service hands one over. `coordinate` is deliberately the *coarsened* point
+ * (see domain/coarsen) — a share link says "there is something around here",
+ * and the last hundred metres are still walked.
+ */
+export const previewResponse = z.object({
+  id: z.string(),
+  placeLabel: z.string().optional(),
+  city: z.string().optional(),
+  mood: moodSchema,
+  createdAt: z.number(),
+  revealCount: z.number(),
+  /** COARSENED to ~3 dp (≈100 m). Never the point the drop is stored at. */
+  coordinate: coordinateSchema,
+  /** ms epoch when the drop fades. Absent = forever. */
+  expiresAt: z.number().optional(),
+});
 
 export const revealBody = z.object({ coordinate: coordinateSchema });
 

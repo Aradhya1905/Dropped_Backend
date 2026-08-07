@@ -18,6 +18,7 @@ import {
   heartResponse,
   nearbyQuery,
   nearbyResponse,
+  previewResponse,
   reportBody,
   reportResponse,
   revealBody,
@@ -70,6 +71,38 @@ export async function dropsRoutes(app: FastifyInstance): Promise<void> {
     '/drops/trail/dropped',
     { schema: { querystring: trailQuery, response: { 200: trailResponse } } },
     trailController.dropped,
+  );
+
+  // Share-a-spot: public metadata for one drop, for someone who has a link and
+  // has not walked anywhere. It is the only route that answers without a reveal
+  // on record, which makes it the most scrapeable surface in the API — hence a
+  // per-route limit well under the global 120/min. It still requires a valid
+  // X-Device-Id like everything else; the link opens the app, and the app
+  // always has one.
+  //
+  // Keyed by IP, unlike the global limiter's device id. A device id is a
+  // self-asserted header — an enumerating client rotates it for free, so
+  // keying the *scrape-sensitive* route on it would throttle nobody.
+  r.get(
+    '/drops/:id/preview',
+    {
+      config: {
+        rateLimit: {
+          max: 20,
+          timeWindow: '1 minute',
+          keyGenerator: (request) => request.ip,
+        },
+      },
+      schema: {
+        params: dropIdParams,
+        response: {
+          200: previewResponse,
+          404: errorSchema,
+          429: errorSchema,
+        },
+      },
+    },
+    dropController.preview,
   );
 
   r.post(

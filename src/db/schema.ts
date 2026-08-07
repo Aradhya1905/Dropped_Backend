@@ -8,6 +8,7 @@
  */
 import { sql } from 'drizzle-orm';
 import {
+  boolean,
   customType,
   date,
   index,
@@ -64,6 +65,14 @@ export const drops = pgTable(
      * reference them, and the author still sees them in their own Trail.
      */
     expiresAt: timestamp('expires_at', { withTimezone: true }),
+    /**
+     * Whether a share link may resolve to this drop. False makes
+     * `GET /drops/:id/preview` 404 — see 0006_drop_shareable.sql.
+     *
+     * An opt-out on the *link*, not on the drop: an unshareable drop is still
+     * found by walking past it, which is the premise of the app.
+     */
+    shareable: boolean('shareable').notNull().default(true),
     createdAt: timestamp('created_at', { withTimezone: true })
       .notNull()
       .defaultNow(),

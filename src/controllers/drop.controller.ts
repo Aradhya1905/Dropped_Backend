@@ -7,14 +7,18 @@ import type { z } from 'zod';
 
 import { dropService } from '../services/drop.service.js';
 import type { Mood } from '../domain/clientTypes.js';
-import type { createDropBody, nearbyQuery } from '../schemas/drop.schema.js';
+import type {
+  createDropBody,
+  dropIdParams,
+  nearbyQuery,
+} from '../schemas/drop.schema.js';
 
 export const dropController = {
   async create(
     request: FastifyRequest<{ Body: z.infer<typeof createDropBody> }>,
     reply: FastifyReply,
   ) {
-    const { body, mood, coordinate, placeLabel, city, expiresInDays } =
+    const { body, mood, coordinate, placeLabel, city, expiresInDays, shareable } =
       request.body;
     const secret = await dropService.create({
       deviceId: request.deviceId,
@@ -24,6 +28,7 @@ export const dropController = {
       placeLabel,
       city,
       expiresInDays,
+      shareable,
     });
     return reply.status(201).send(secret);
   },
@@ -39,5 +44,14 @@ export const dropController = {
       radiusMeters,
     );
     return reply.send({ secrets });
+  },
+
+  /** Public metadata for a shared spot. No device relationship, no body. */
+  async preview(
+    request: FastifyRequest<{ Params: z.infer<typeof dropIdParams> }>,
+    reply: FastifyReply,
+  ) {
+    const preview = await dropService.preview(request.params.id);
+    return reply.send(preview);
   },
 };

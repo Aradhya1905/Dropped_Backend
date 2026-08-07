@@ -51,6 +51,12 @@ export const apiSecretSchema = z.object({
   distanceMeters: z.number().optional(),
   /** ms epoch when this drop fades. Absent = forever. */
   expiresAt: z.number().optional(),
+  /**
+   * Whether a share link may point here. Surfaced to every reader, not just
+   * the author: otherwise a reader offers a share sheet whose link 404s for
+   * whoever receives it.
+   */
+  shareable: z.boolean(),
 });
 
 export const paginationSchema = z.object({
