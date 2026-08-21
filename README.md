@@ -55,6 +55,12 @@ postgis;` itself, so nothing else changes.
 > Tests touch the database in `DATABASE_URL` (the reveal suite exercises real
 > PostGIS — that's the point) and clean up their own rows.
 
+> **Migration numbering:** `0004`–`0009` are already recorded in the live
+> `_migrations` table by the abandoned FUN_TODOs work, though those files are not
+> on `main`. **Start the next migration at `0010`** — the migrator keys off the
+> filename, so a reused number is silently skipped. See
+> [tables.md](tables.md#migrations--read-before-adding-one).
+
 ## Auth & conventions (matches the client exactly)
 
 - **Identity:** every request carries `X-Device-Id: <uuid v4>`. No accounts; the

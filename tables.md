@@ -54,6 +54,43 @@ postgresql://neondb_owner:npg_faF6lqUixZr8@ep-purple-sunset-ao75u44p.c-2.ap-sout
 
 ---
 
+## Migrations — READ BEFORE ADDING ONE
+
+`yarn db:migrate` (`src/db/migrate.ts`) runs the hand-authored `.sql` files in
+`drizzle/` in filename order, and records each **filename** in a `_migrations`
+table so it is only applied once. It keys off the filename and nothing else.
+
+**The live database is ahead of this branch.** The abandoned FUN_TODOs work
+applied six further migrations to Neon on 2026-08-07 and they are permanently
+recorded in `_migrations`, even though the files do not exist on `main`:
+
+| Recorded in `_migrations` | Added to the live DB |
+|---|---|
+| `0004_replies.sql` | `replies` table; `drops.reply_count`; `reports.reply_id`; `reports.drop_id` made nullable + `reports_target_chk` |
+| `0005_drop_expiry.sql` | `drops.expires_at` + partial index |
+| `0006_drop_shareable.sql` | `drops.shareable` (NOT NULL DEFAULT true) |
+| `0007_echo_indexes.sql` | `reveals_device_created_idx`, `drops_device_created_idx` |
+| `0008_reveal_condition.sql` | `drops.reveal_condition` + CHECK |
+| `0009_device_erasure.sql` | `__deleted__` sentinel device row; `replies_drop_device_uniq` made partial; `reports_device_idx` |
+
+All of it is additive and **unused by `main`** — every column is either nullable
+or defaulted, no query on this branch names any of them, and no row exercises
+them. `main` deploys against this schema unchanged; `db:migrate` is a no-op.
+The tables and columns below therefore document `main`'s view, not the full
+live schema.
+
+> ⚠️ **Number the next migration `0010` or higher.** A new file named
+> `0004_*.sql` (or any of `0005`–`0009`) matches a name already in
+> `_migrations`, so the migrator prints `• skip … (already applied)` and
+> **silently never runs it** — a schema change that looks like it succeeded and
+> did nothing.
+
+To undo any of the six, the down path is written in the header comment of the
+corresponding file on the `feature/funToDos` branch. Deleting the `_migrations`
+rows is part of that; leaving them is what makes the numbering rule above.
+
+---
+
 ## Tables
 
 There are **7 tables**, all in the `public` schema.
