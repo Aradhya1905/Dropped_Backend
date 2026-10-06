@@ -33,6 +33,8 @@ export const devices = pgTable('devices', {
   createdAt: timestamp('created_at', { withTimezone: true })
     .notNull()
     .defaultNow(),
+  /** Set once the device has used its one onboarding starter-seed attempt. */
+  starterClaimedAt: timestamp('starter_claimed_at', { withTimezone: true }),
 });
 
 /** Drop status drives shadow-removal: only `visible` rows appear in nearby. */
@@ -57,6 +59,8 @@ export const drops = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true })
       .notNull()
       .defaultNow(),
+    /** NULL = never expires. Set on starter drops (0010_starter_drops). */
+    expiresAt: timestamp('expires_at', { withTimezone: true }),
   },
   table => [
     // GiST index for fast ST_DWithin. Created explicitly in the SQL migration

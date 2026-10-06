@@ -57,6 +57,16 @@ export const deviceResponse = z.object({
   dropsQuotaRemaining: z.number(),
 });
 
+/** Client → server: the device's first live fix after onboarding. */
+export const starterDropsBody = z.object({ coordinate: coordinateSchema });
+
+export const starterDropsResponse = z.object({
+  /** True if starter drops were pinned around the coordinate. */
+  seeded: z.boolean(),
+  /** Why: seeded / area-occupied / already-claimed / disabled. */
+  outcome: z.enum(['seeded', 'area-occupied', 'already-claimed', 'disabled']),
+});
+
 export const deviceStatsResponse = z.object({
   droppedTotal: z.number(),
   droppedThisMonth: z.number(),

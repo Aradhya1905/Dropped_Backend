@@ -1,5 +1,6 @@
 /**
- * devices.routes — the anonymous identity endpoint.
+ * devices.routes — the anonymous identity endpoint, Trail stats/steps, and the
+ * one-shot onboarding starter-drop seed.
  */
 import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
@@ -9,6 +10,8 @@ import {
   addStepsBody,
   deviceResponse,
   deviceStatsResponse,
+  starterDropsBody,
+  starterDropsResponse,
   stepsResponse,
 } from '../schemas/drop.schema.js';
 
@@ -37,5 +40,19 @@ export async function devicesRoutes(app: FastifyInstance): Promise<void> {
     '/devices/me/steps',
     { schema: { body: addStepsBody, response: { 200: stepsResponse } } },
     deviceController.addSteps,
+  );
+
+  // Once per device (enforced in the DB); the tight limit just stops a client
+  // bug from hammering the global advisory lock.
+  r.post(
+    '/devices/me/starter-drops',
+    {
+      schema: {
+        body: starterDropsBody,
+        response: { 200: starterDropsResponse },
+      },
+      config: { rateLimit: { max: 5, timeWindow: '1 hour' } },
+    },
+    deviceController.starterDrops,
   );
 }

@@ -71,7 +71,8 @@ routes/ -> controllers/ -> services/ -> repositories/ -> db/
 **filename** in `_migrations`. A reused number is silently skipped.
 
 `0004`–`0009` are already recorded in the live Neon DB by abandoned work whose files are
-**not on `main`**. **Number the next migration `0010` or higher.** The live schema is a
+**not on `main`**. `0010_starter_drops` is the first one after the gap. **Number the next
+migration `0011` or higher.** The live schema is a
 superset of what `main` uses; see `tables.md` for the diff. `src/db/schema.ts` is the
 typed mirror — the PostGIS `geography(Point,4326)` column is a `customType` opaque to
 Drizzle and touched only through raw SQL in `drop.repo.ts`.

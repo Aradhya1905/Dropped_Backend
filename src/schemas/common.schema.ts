@@ -47,6 +47,8 @@ export const apiSecretSchema = z.object({
   saved: z.boolean(),
   hearted: z.boolean(),
   distanceMeters: z.number().optional(),
+  /** Seeded by the server into an empty area, not left by a person. */
+  starter: z.boolean().optional(),
 });
 
 export const paginationSchema = z.object({

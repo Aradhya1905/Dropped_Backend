@@ -7,8 +7,11 @@
  * safely. Everything returns a flat `DropRow` plus, where the device matters,
  * that device's saved/hearted/revealed flags — so services never see SQL.
  */
+import type postgres from 'postgres';
+
 import { sqlClient } from '../db/client.js';
 import type { Coordinate } from '../domain/clientTypes.js';
+import { STARTER_DEVICE_ID } from '../domain/starterPool.js';
 import type { DropStatus } from '../db/schema.js';
 
 /** A drop as the repo returns it (coordinate already split out of geography). */
@@ -27,6 +30,8 @@ export interface DropRow {
   heartCount: number;
   /** postgres.js returns timestamps as strings; mappers coerce to ms epoch. */
   createdAt: Date | string;
+  /** Authored by the system starter device (seeded into an empty area). */
+  starter: boolean;
 }
 
 /** DropRow plus the requesting device's relationship to it. */
@@ -46,6 +51,8 @@ interface CreateDropInput {
   city: string | null;
   coordinate: Coordinate;
   status: DropStatus;
+  /** Null/omitted = never expires. */
+  expiresAt?: Date | null;
 }
 
 /** Round to 5 dp (~1 m) so we never store the author's exact GPS fix. */
@@ -65,7 +72,8 @@ const dropCols = sqlClient`
   d.reveal_count     AS "revealCount",
   d.stood_here       AS "stoodHere",
   d.heart_count      AS "heartCount",
-  d.created_at       AS "createdAt"
+  d.created_at       AS "createdAt",
+  (d.device_id = ${STARTER_DEVICE_ID}) AS starter
 `;
 
 /** LEFT JOINs that expose this device's saved/hearted/revealed flags. */
@@ -82,12 +90,18 @@ const deviceFlagCols = sqlClient`
 `;
 
 export const dropRepo = {
-  /** Insert a drop. Coordinate is snapped before storage (privacy). */
-  async create(input: CreateDropInput): Promise<DropRow> {
+  /**
+   * Insert a drop. Coordinate is snapped before storage (privacy). Pass `sql`
+   * to run inside a caller's transaction.
+   */
+  async create(
+    input: CreateDropInput,
+    sql: postgres.ISql = sqlClient,
+  ): Promise<DropRow> {
     const lat = snap(input.coordinate.lat);
     const lng = snap(input.coordinate.lng);
-    const rows = await sqlClient<DropRow[]>`
-      INSERT INTO drops (device_id, body, mood, place_label, city, geog, status)
+    const rows = await sql<DropRow[]>`
+      INSERT INTO drops (device_id, body, mood, place_label, city, geog, status, expires_at)
       VALUES (
         ${input.deviceId},
         ${input.body},
@@ -95,21 +109,26 @@ export const dropRepo = {
         ${input.placeLabel},
         ${input.city},
         ST_SetSRID(ST_MakePoint(${lng}, ${lat}), 4326)::geography,
-        ${input.status}
+        ${input.status},
+        -- ISO string + cast: postgres.js fails to serialise a Date here when
+        -- the parameter type is inferred from a nullable column.
+        ${input.expiresAt ? input.expiresAt.toISOString() : null}::timestamptz
       )
       RETURNING
         id, device_id AS "deviceId", body, mood, place_label AS "placeLabel",
         city,
         ST_Y(geog::geometry) AS lat, ST_X(geog::geometry) AS lng,
         status, reveal_count AS "revealCount", stood_here AS "stoodHere",
-        heart_count AS "heartCount", created_at AS "createdAt"
+        heart_count AS "heartCount", created_at AS "createdAt",
+        (device_id = ${STARTER_DEVICE_ID}) AS starter
     `;
     return rows[0]!;
   },
 
   /**
    * Visible drops within `radiusMeters` of a point, nearest first, with the
-   * requesting device's flags. Excludes anything not `visible` (shadow-removal).
+   * requesting device's flags. Excludes anything not `visible` (shadow-removal)
+   * and anything expired — unless this device already revealed it.
    */
   async nearby(
     deviceId: string,
@@ -125,6 +144,7 @@ export const dropRepo = {
       FROM drops d
       ${deviceFlagJoins(deviceId)}
       WHERE d.status = 'visible'
+        AND (d.expires_at IS NULL OR d.expires_at > now() OR rv.device_id IS NOT NULL)
         AND ST_DWithin(
           d.geog,
           ST_SetSRID(ST_MakePoint(${point.lng}, ${point.lat}), 4326)::geography,
@@ -153,10 +173,12 @@ export const dropRepo = {
   /**
    * Server-side distance check for the reveal. Returns metres from the one-shot
    * point to the drop, and whether it's within `radiusMeters` — computed in
-   * Postgres so a spoofed client distance is irrelevant. Undefined if no drop.
+   * Postgres so a spoofed client distance is irrelevant. Undefined if no drop,
+   * or if it has expired and `deviceId` hasn't already revealed it.
    */
   async distanceFrom(
     id: string,
+    deviceId: string,
     point: Coordinate,
     radiusMeters: number,
   ): Promise<{ distanceMeters: number; within: boolean } | undefined> {
@@ -164,8 +186,12 @@ export const dropRepo = {
       SELECT
         ST_Distance(geog, ST_SetSRID(ST_MakePoint(${point.lng}, ${point.lat}), 4326)::geography) AS "distanceMeters",
         ST_DWithin(geog, ST_SetSRID(ST_MakePoint(${point.lng}, ${point.lat}), 4326)::geography, ${radiusMeters}) AS within
-      FROM drops
+      FROM drops d
       WHERE id = ${id} AND status = 'visible'
+        AND (
+          expires_at IS NULL OR expires_at > now()
+          OR EXISTS (SELECT 1 FROM reveals r WHERE r.drop_id = d.id AND r.device_id = ${deviceId})
+        )
       LIMIT 1
     `;
     return rows[0];
@@ -233,6 +259,30 @@ export const dropRepo = {
     `;
 
     return { rows, total: countRows[0]?.total ?? 0 };
+  },
+
+  /**
+   * Whether any visible, unexpired drop sits within `radiusMeters` of a point.
+   * Backed by the GiST index. Pass `sql` to run inside a transaction.
+   */
+  async hasDropsWithin(
+    point: Coordinate,
+    radiusMeters: number,
+    sql: postgres.ISql = sqlClient,
+  ): Promise<boolean> {
+    const rows = await sql<{ found: boolean }[]>`
+      SELECT EXISTS (
+        SELECT 1 FROM drops
+        WHERE status = 'visible'
+          AND (expires_at IS NULL OR expires_at > now())
+          AND ST_DWithin(
+            geog,
+            ST_SetSRID(ST_MakePoint(${point.lng}, ${point.lat}), 4326)::geography,
+            ${radiusMeters}
+          )
+      ) AS found
+    `;
+    return rows[0]?.found ?? false;
   },
 
   /** Set a drop's moderation status. */

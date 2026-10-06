@@ -7,8 +7,9 @@ import type { FastifyReply, FastifyRequest } from 'fastify';
 import type { z } from 'zod';
 
 import { deviceService } from '../services/device.service.js';
+import { starterService } from '../services/starter.service.js';
 import { stepService } from '../services/step.service.js';
-import type { addStepsBody } from '../schemas/drop.schema.js';
+import type { addStepsBody, starterDropsBody } from '../schemas/drop.schema.js';
 
 export const deviceController = {
   async me(request: FastifyRequest, reply: FastifyReply) {
@@ -29,5 +30,14 @@ export const deviceController = {
   ) {
     await stepService.add(request.deviceId, request.body.entries);
     return reply.send(await stepService.get(request.deviceId));
+  },
+
+  async starterDrops(
+    request: FastifyRequest<{ Body: z.infer<typeof starterDropsBody> }>,
+    reply: FastifyReply,
+  ) {
+    return reply.send(
+      await starterService.seed(request.deviceId, request.body.coordinate),
+    );
   },
 };

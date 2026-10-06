@@ -51,6 +51,7 @@ export interface ApiSecret {
   saved: boolean;           // this device's relationship
   hearted: boolean;
   distanceMeters?: number;  // present on nearby + reveal responses
+  starter?: boolean;        // true => server-seeded starter drop, not a person's
 }
 
 export interface ApiError {
@@ -78,6 +79,30 @@ This device's summary and remaining daily drop quota.
 
 ---
 
+### `POST /devices/me/starter-drops`
+Call **once**, with the device's first **live** GPS fix after onboarding. If no
+visible, unexpired drop exists within `STARTER_CHECK_RADIUS_M` (default 1000 m),
+the server pins 3 shared starter drops around the point (~10–25 m, ~150–250 m,
+~400–600 m). They are public, labelled `placeLabel: "A starter drop"` with
+`starter: true`, and expire after `STARTER_DROP_TTL_DAYS` (default 30) unless
+you've revealed them. Each device gets one attempt, ever.
+
+**Request body:**
+```ts
+{ coordinate: Coordinate }
+```
+- **200** →
+  ```ts
+  {
+    seeded: boolean;
+    outcome: 'seeded' | 'area-occupied' | 'already-claimed' | 'disabled';
+  }
+  ```
+  On `seeded`, refetch `/drops/nearby` to show the new pins.
+- **429** → more than 5 calls/hour from this device.
+
+---
+
 ### `POST /drops`
 Create a drop (screened by moderation on ingest).
 
@@ -98,7 +123,8 @@ Create a drop (screened by moderation on ingest).
 
 ### `GET /drops/nearby`
 Visible drops near a point, nearest first. Each is **sealed** (`sealed: true`,
-no `body`) unless this device already revealed it.
+no `body`) unless this device already revealed it. Expired drops are left out
+unless this device already revealed them.
 
 **Query params:**
 | Name | Type | Required | Notes |
@@ -122,7 +148,8 @@ for the distance check, never stored.
 ```
 - **200** → `ApiSecret` (unsealed; `body` present, counters bumped)
 - **403** → `{ message: "Too far to reveal", distanceMeters: number }`
-- **404** → `{ message }` — drop missing or not visible
+- **404** → `{ message }` — drop missing, not visible, or expired (and not
+  already revealed by this device)
 
 ---
 
@@ -170,6 +197,7 @@ Per-device scrapbook. Entries are **unsealed** (earned or owned).
 | --- | --- | --- | --- |
 | GET | `/health` | — | `{ ok: true }` |
 | GET | `/devices/me` | — | device summary |
+| POST | `/devices/me/starter-drops` | `{ coordinate }` | `{ seeded, outcome }` |
 | POST | `/drops` | create body | `201 ApiSecret` |
 | GET | `/drops/nearby` | — (query) | `{ secrets }` |
 | POST | `/drops/{id}/reveal` | `{ coordinate }` | `ApiSecret` |

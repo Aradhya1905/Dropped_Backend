@@ -73,6 +73,8 @@ export interface ApiSecret extends Omit<Secret, 'body'> {
   hearted: boolean;
   /** Present on nearby results: server-computed metres from the query point. */
   distanceMeters?: number;
+  /** True for a server-seeded starter drop (not left by a person). */
+  starter?: boolean;
 }
 
 /**

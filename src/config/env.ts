@@ -56,6 +56,17 @@ const EnvSchema = z.object({
   /** Reports needed to auto-flip a drop to `pending` (shadow-removed). */
   REPORT_HIDE_THRESHOLD: z.coerce.number().int().positive().default(3),
 
+  // --- Starter drops (POST /devices/me/starter-drops) ----------------------
+  /** Kill switch: false = never seed. */
+  STARTER_DROPS_ENABLED: z
+    .enum(['true', 'false'])
+    .default('true')
+    .transform(v => v === 'true'),
+  /** Seed only if no visible, unexpired drop exists within this radius (m). */
+  STARTER_CHECK_RADIUS_M: z.coerce.number().int().positive().default(1000),
+  /** How long a starter drop stays on the map, in days. */
+  STARTER_DROP_TTL_DAYS: z.coerce.number().int().positive().default(30),
+
   // --- Walking-route proxy (GET /route/foot) -------------------------------
   // Keys are optional: with neither set the endpoint simply returns
   // { available: false } and the client draws no path. Tried ORS → Mapbox.

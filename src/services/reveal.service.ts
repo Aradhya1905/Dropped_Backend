@@ -25,6 +25,7 @@ export const revealService = {
   ): Promise<ApiSecret> {
     const check = await dropRepo.distanceFrom(
       dropId,
+      deviceId,
       position,
       REVEAL_RADIUS_M,
     );

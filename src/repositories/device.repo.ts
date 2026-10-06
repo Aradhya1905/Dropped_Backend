@@ -5,6 +5,7 @@
  * "account" in the system.
  */
 import { eq, sql } from 'drizzle-orm';
+import type postgres from 'postgres';
 
 import { db, sqlClient } from '../db/client.js';
 import { devices, drops } from '../db/schema.js';
@@ -27,6 +28,28 @@ export const deviceRepo = {
       .insert(devices)
       .values({ id })
       .onConflictDoNothing({ target: devices.id });
+  },
+
+  /**
+   * Use up the device's one starter-seed attempt. Atomic: returns true only for
+   * the first caller, false if it was already claimed. Pass `tx` to run inside
+   * a transaction.
+   */
+  async claimStarter(
+    id: string,
+    tx: postgres.ISql = sqlClient,
+  ): Promise<boolean> {
+    const rows = await tx`
+      UPDATE devices SET starter_claimed_at = now()
+      WHERE id = ${id} AND starter_claimed_at IS NULL
+      RETURNING id
+    `;
+    return rows.length > 0;
+  },
+
+  /** Raw-SQL twin of `ensure`, for use inside a postgres.js transaction. */
+  async ensureTx(id: string, tx: postgres.ISql): Promise<void> {
+    await tx`INSERT INTO devices (id) VALUES (${id}) ON CONFLICT (id) DO NOTHING`;
   },
 
   /** Fetch a device row, or undefined. */

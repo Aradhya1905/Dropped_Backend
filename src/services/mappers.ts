@@ -37,6 +37,7 @@ const baseSecret = (row: DropRowForDevice) => ({
   stoodHere: Number(row.stoodHere),
   saved: row.saved,
   hearted: row.hearted,
+  starter: Boolean(row.starter),
 });
 
 /** Sealed view: body withheld. Used by nearby (pre-reveal). */

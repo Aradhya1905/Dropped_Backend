@@ -73,7 +73,12 @@ recorded in `_migrations`, even though the files do not exist on `main`:
 | `0008_reveal_condition.sql` | `drops.reveal_condition` + CHECK |
 | `0009_device_erasure.sql` | `__deleted__` sentinel device row; `replies_drop_device_uniq` made partial; `reports_device_idx` |
 
-All of it is additive and **unused by `main`** — every column is either nullable
+`main` has since added `0010_starter_drops.sql`, which (re)declares
+`drops.expires_at` + `drops_expires_idx` with `IF NOT EXISTS` — a no-op on the
+live DB, where `0005` already created them — and adds `devices.starter_claimed_at`.
+
+Apart from `drops.expires_at` (now used by `main` for starter drops), all of it
+is additive and **unused by `main`** — every column is either nullable
 or defaulted, no query on this branch names any of them, and no row exercises
 them. `main` deploys against this schema unchanged; `db:migrate` is a no-op.
 The tables and columns below therefore document `main`'s view, not the full
@@ -102,6 +107,7 @@ Anonymous identity. One row per device. `id` is the `X-Device-Id` UUID the clien
 |-------------|----------------------------|-------|
 | id          | text                       | **PK**. The client-generated device UUID |
 | created_at  | timestamptz                | NOT NULL, defaults to `now()` |
+| starter_claimed_at | timestamptz         | Nullable. Set once the device used its one starter-seed attempt |
 
 ### `drops`
 The core content — a "drop" left at a geographic location.
@@ -120,6 +126,7 @@ The core content — a "drop" left at a geographic location.
 | stood_here    | integer                  | NOT NULL, default `0` |
 | heart_count   | integer                  | NOT NULL, default `0` |
 | created_at    | timestamptz              | NOT NULL, default `now()` |
+| expires_at    | timestamptz              | Nullable. NULL = never. Set on starter drops; expired drops leave nearby/reveal |
 
 Indexes: `drops_geog_gix` (GiST on `geog`, for nearby/`ST_DWithin`), `drops_device_idx` (device_id), `drops_status_idx` (status).
 
